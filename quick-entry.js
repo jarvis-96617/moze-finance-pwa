@@ -15,7 +15,7 @@ let calcExpr = "";
 let currentType = "支出";
 let selectedMainCat = "";
 let selectedSubCat = "";
-let tierLevel = 1; // 1: 數字鍵盤, 2: 主/子類別大格子, 3: 進階選項
+let tierLevel = 1;
 let editingTxId = null;
 let fanOpen = false;
 
@@ -49,7 +49,7 @@ function saveLocalMeta() {
 }
 
 // =========================================================================
-// 1. 樣式強化（修復按鍵暗黑看不到、明細文字重疊、iPhone 16 Pro 扇形選單）
+// 1. 樣式強化（底部中央扇形快選 + 自適應防重疊 + 按鍵高對比 + 明細防疊字）
 // =========================================================================
 function injectEnhancedStyles() {
   if (document.getElementById("qe-enhanced-style")) return;
@@ -64,84 +64,109 @@ function injectEnhancedStyles() {
     }
     .nav-btn.text-cyan-400 .nav-indicator::after { opacity: 1; transform: scaleX(1); }
 
-    /* iPhone 16 Pro 拇指區雙圓形按鈕：左側「扇形快選」、右側「主記帳」 */
-    #qe-fab-group {
-      position: fixed;
-      right: 16px;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
-      z-index: 44;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    @media (min-width: 1024px) {
-      #qe-fab-group { bottom: 26px; right: 28px; }
-    }
-    .qe-circle-btn {
-      width: 52px;
-      height: 52px;
-      border-radius: 999px;
-      display: flex;
+    /* 底部導覽列中央嵌入的扇形快選鈕（紅框位置） */
+    #qe-center-fan-btn {
+      width: 42px;
+      height: 36px;
+      border-radius: 14px;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      border: 1px solid var(--card-border);
-      box-shadow: var(--btn-shadow), 0 8px 20px rgba(0,0,0,.18);
-      transition: transform .16s ease, filter .16s ease;
+      background: var(--soft-dark-btn);
       color: #f8fafc;
+      border: 1px solid var(--soft-dark-border);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+      transition: transform .18s ease, background .18s ease;
+      flex-shrink: 0;
     }
-    .qe-circle-btn:active { transform: scale(.92); filter: brightness(1.08); }
-    #qe-fan-trigger {
-      background: linear-gradient(135deg, #334155, #1e293b);
-    }
-    #qe-fab {
+    #qe-center-fan-btn:active { transform: scale(.92); }
+    #qe-center-fan-btn.active {
       background: var(--soft-dark-accent);
+      transform: rotate(45deg);
     }
 
-    /* 扇形泡泡容器 */
-    #qe-fan-layer {
+    /* 扇形展開遮罩與節點層 */
+    #qe-fan-backdrop {
       position: fixed;
-      right: 16px;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
-      width: 0;
-      height: 0;
-      z-index: 43;
-      pointer-events: none;
-    }
-    @media (min-width: 1024px) {
-      #qe-fan-layer { bottom: 26px; right: 28px; }
-    }
-    .qe-fan-node {
-      position: absolute;
-      right: 64px;
-      bottom: 0;
-      min-width: 68px;
-      height: 44px;
-      padding: 0 12px;
-      border-radius: 999px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      font-size: 12px;
-      font-weight: 800;
-      color: #f8fafc;
-      background: linear-gradient(135deg, #2b384e, #3b4d6b);
-      border: 1px solid rgba(148,163,184,.42);
-      box-shadow: 0 10px 24px rgba(15,23,42,.32);
+      inset: 0;
+      z-index: 38;
+      background: rgba(15, 23, 42, 0.22);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
       opacity: 0;
       pointer-events: none;
-      transform: translate(0, 0) scale(.6);
-      transition: transform .24s cubic-bezier(.18,.9,.28,1.15), opacity .18s ease, background .15s ease;
+      transition: opacity .2s ease;
+    }
+    #qe-fan-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #qe-fan-layer {
+      position: fixed;
+      left: 50%;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 34px);
+      width: 0;
+      height: 0;
+      z-index: 42;
+      pointer-events: none;
+    }
+
+    .qe-fan-node {
+      position: absolute;
+      left: 0;
+      top: 0;
+      padding: 7px 12px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.1;
+      color: #f8fafc;
+      background: linear-gradient(135deg, #2b384e, #3b4d6b);
+      border: 1px solid rgba(148, 163, 184, 0.45);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.30);
+      opacity: 0;
+      pointer-events: none;
       white-space: nowrap;
+      transform: translate(-50%, -50%) scale(0.5);
+      transition: transform .24s cubic-bezier(.18, .9, .28, 1.12), opacity .16s ease;
     }
     #qe-fan-layer.open .qe-fan-node {
       opacity: 1;
       pointer-events: auto;
+      transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy))) scale(1);
     }
-    .qe-fan-node.hovered {
-      background: linear-gradient(135deg, #0284c7, #2563eb);
-      transform: var(--fan-pos) scale(1.1) !important;
+    .qe-fan-node:active {
+      filter: brightness(1.18);
     }
+    .qe-fan-node.is-xfer {
+      background: var(--soft-dark-accent);
+      border-color: rgba(125, 211, 252, 0.5);
+    }
+
+    /* 超過 12 項時的自適應多列居中面板備援，絕不溢出螢幕 */
+    #qe-fan-grid-fallback {
+      position: fixed;
+      left: 14px;
+      right: 14px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+      max-width: 420px;
+      margin: 0 auto;
+      z-index: 42;
+      display: none;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 22px;
+      background: var(--glass-strong);
+      border: 1px solid var(--card-border);
+      box-shadow: var(--shadow);
+    }
+    #qe-fan-grid-fallback.open { display: flex; }
 
     .qe-sheet {
       background-color: var(--glass-strong);
@@ -155,7 +180,6 @@ function injectEnhancedStyles() {
     @media (min-width: 640px) { .qe-sheet { border-radius: 1.85rem; } }
     @keyframes qeUp { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
 
-    /* 鎖定數字鍵盤按鍵色彩，避免按壓變暗看不到 */
     .qe-key-btn {
       background-color: #e6eae6;
       color: #1e293b;
@@ -179,7 +203,6 @@ function injectEnhancedStyles() {
       color: #ffffff;
     }
 
-    /* 明細滑動列：底層操作條預設隱藏，滑動時才顯示，前層有實心毛玻璃底防疊字 */
     .swipe-row-wrap {
       position: relative;
       overflow: hidden;
@@ -200,9 +223,7 @@ function injectEnhancedStyles() {
       transition: opacity .15s ease;
       background: linear-gradient(90deg, rgba(56,189,248,.18), rgba(251,113,133,.20));
     }
-    .swipe-row-wrap.swiping .swipe-action-bg {
-      opacity: 1;
-    }
+    .swipe-row-wrap.swiping .swipe-action-bg { opacity: 1; }
     .swipe-row-content {
       position: relative;
       z-index: 2;
@@ -338,7 +359,7 @@ function patchLedgerAndBalances() {
   if (listEl) {
     listEl.innerHTML = "";
     if (!filtered.length) {
-      listEl.innerHTML = `<div class="text-xs text-slate-400 py-6 text-center">尚無記帳紀錄，點選右下角「＋」或扇形選單記帳。</div>`;
+      listEl.innerHTML = `<div class="text-xs text-slate-400 py-6 text-center">尚無記帳紀錄，點選底部中央「＋」扇形選單或右上角「記帳」。</div>`;
     } else {
       filtered.forEach(tx => {
         const isOut = (tx.type === "支出" || tx.type === "轉出" || tx.type === "應付款項");
@@ -384,17 +405,16 @@ function patchLedgerAndBalances() {
             await window.__FINANCE_APP__.reloadAll();
             window.showToast("已刪除紀錄");
           } else if (curDx > 55) {
-            openQuickSheet(tx);
+            openQuickSheet(tx, null);
           }
           curDx = 0;
         });
-        content.addEventListener("dblclick", () => openQuickSheet(tx));
+        content.addEventListener("dblclick", () => openQuickSheet(tx, null));
         listEl.appendChild(wrap);
       });
     }
   }
 
-  // 更新資產總覽與卡費補水為「月初快照 + 當月流水」即時餘額
   const liveMap = computeLiveAccountBalances(state, mIdx, monthStr);
   const fxRates = state.forexRates || { JPY: 0.21, KRW: 0.024, USD: 32.2 };
   const getFx = (name = "") => {
@@ -477,7 +497,7 @@ function patchLedgerAndBalances() {
 }
 
 // =========================================================================
-// 3. iPhone 16 Pro 右下角扇形快選 + 滑動記帳面板 + 轉帳雙帳戶選擇
+// 3. 底部中央置中扇形選單（自動依選項數量與螢幕寬度調整，不破圖不疊圖）
 // =========================================================================
 function getAccountList() {
   const state = window.__FINANCE_APP__.getState();
@@ -489,49 +509,177 @@ function getAccountList() {
   return accs;
 }
 
-function buildQuickEntryUI() {
-  if (document.getElementById("qe-fab-group")) return;
-
-  document.querySelectorAll(".nav-btn").forEach(btn => {
-    const label = btn.querySelector("span");
-    if (label && !label.classList.contains("nav-indicator")) label.classList.add("nav-indicator");
+function getFanDynamicItems() {
+  const state = window.__FINANCE_APP__.getState();
+  const cats = state.categories || {};
+  const mainNames = Object.keys(cats);
+  const items = mainNames.map(m => ({
+    label: m,
+    type: "支出",
+    mainCat: m,
+    subCat: (cats[m] && cats[m][0]) || "一般"
+  }));
+  items.push({
+    label: "轉帳",
+    type: "轉帳",
+    mainCat: "其他",
+    subCat: "轉帳/調整",
+    isXfer: true
   });
+  return items;
+}
 
-  // 扇形泡泡層（向左上弧形展開 5 個高頻選項，貼合 iPhone 16 Pro 右下角拇指弧度）
+function renderAdaptiveFanNodes() {
+  const fanLayer = document.getElementById("qe-fan-layer");
+  const fallbackGrid = document.getElementById("qe-fan-grid-fallback");
+  if (!fanLayer || !fallbackGrid) return;
+
+  const items = getFanDynamicItems();
+  const vw = Math.min(window.innerWidth || 393, 440);
+  // 留左右各 38px 安全邊距，確保膠囊絕不切出螢幕左右邊緣
+  const maxHalfSpan = Math.max(115, (vw / 2) - 42);
+
+  fanLayer.innerHTML = "";
+  fallbackGrid.innerHTML = "";
+
+  // 若選項超過 13 個，自動切換為置中自適應圓弧膠囊群組，保證絕不重疊
+  if (items.length > 13) {
+    fanLayer.dataset.mode = "grid";
+    items.forEach((it, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `px-3 py-2 rounded-full text-xs font-extrabold text-slate-50 border ${it.isXfer ? "btn-soft-accent" : "btn-soft-dark"}`;
+      btn.textContent = it.label;
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeFanMenu();
+        openQuickSheet(null, it);
+      });
+      fallbackGrid.appendChild(btn);
+    });
+    return;
+  }
+
+  fanLayer.dataset.mode = "arc";
+
+  // 依據總數量自動分成 1 圈（<=5項）或 2 圈同心上弧（6~13項）
+  const rings = [];
+  if (items.length <= 5) {
+    rings.push({ list: items, radius: Math.min(126, maxHalfSpan * 0.96), startDeg: -158, endDeg: -22 });
+  } else {
+    const innerCount = Math.min(5, Math.ceil(items.length * 0.42));
+    const innerList = items.slice(0, innerCount);
+    const outerList = items.slice(innerCount);
+    const innerR = Math.min(96, maxHalfSpan * 0.72);
+    const outerR = Math.min(156, maxHalfSpan * 1.02);
+    rings.push({ list: innerList, radius: innerR, startDeg: -152, endDeg: -28 });
+    rings.push({ list: outerList, radius: outerR, startDeg: -164, endDeg: -16 });
+  }
+
+  rings.forEach((ring, rIdx) => {
+    const n = ring.list.length;
+    ring.list.forEach((it, i) => {
+      const deg = n === 1
+        ? -90
+        : ring.startDeg + ((ring.endDeg - ring.startDeg) * i) / (n - 1);
+      const rad = (deg * Math.PI) / 180;
+      // 限制水平偏移不超過 maxHalfSpan，垂直往上展開
+      const rawX = Math.cos(rad) * ring.radius;
+      const fx = Math.max(-maxHalfSpan, Math.min(maxHalfSpan, rawX));
+      const fy = Math.sin(rad) * ring.radius - (rIdx * 6);
+
+      const node = document.createElement("button");
+      node.type = "button";
+      node.className = `qe-fan-node ${it.isXfer ? "is-xfer" : ""}`;
+      node.style.setProperty("--fx", `${fx.toFixed(1)}px`);
+      node.style.setProperty("--fy", `${fy.toFixed(1)}px`);
+      node.style.transitionDelay = `${(rIdx * 3 + i) * 18}ms`;
+      node.textContent = it.label;
+
+      node.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeFanMenu();
+        openQuickSheet(null, it);
+      });
+      fanLayer.appendChild(node);
+    });
+  });
+}
+
+function openFanMenu() {
+  renderAdaptiveFanNodes();
+  fanOpen = true;
+  const btn = document.getElementById("qe-center-fan-btn");
+  const backdrop = document.getElementById("qe-fan-backdrop");
+  const fanLayer = document.getElementById("qe-fan-layer");
+  const fallbackGrid = document.getElementById("qe-fan-grid-fallback");
+
+  if (btn) btn.classList.add("active");
+  if (backdrop) backdrop.classList.add("open");
+  if (fanLayer?.dataset.mode === "grid") {
+    fallbackGrid?.classList.add("open");
+  } else {
+    fanLayer?.classList.add("open");
+  }
+}
+
+function closeFanMenu() {
+  fanOpen = false;
+  document.getElementById("qe-center-fan-btn")?.classList.remove("active");
+  document.getElementById("qe-fan-backdrop")?.classList.remove("open");
+  document.getElementById("qe-fan-layer")?.classList.remove("open");
+  document.getElementById("qe-fan-grid-fallback")?.classList.remove("open");
+}
+
+function buildQuickEntryUI() {
+  if (document.getElementById("qe-center-fan-btn")) return;
+
+  // 清除舊版懸浮群組（若殘留）
+  document.getElementById("qe-fab-group")?.remove();
+
+  // 將扇形觸發鈕置中嵌入底部 <nav> 紅框位置（目前：記帳明細 與 切換頁面 之間）
+  const bottomNav = document.querySelector("nav.fixed");
+  const togglePagesBtn = document.getElementById("btn-toggle-pages");
+  if (bottomNav && togglePagesBtn) {
+    const centerBtn = document.createElement("button");
+    centerBtn.id = "qe-center-fan-btn";
+    centerBtn.type = "button";
+    centerBtn.title = "扇形快速記帳";
+    centerBtn.setAttribute("aria-label", "扇形快速記帳");
+    centerBtn.innerHTML = `<i data-lucide="plus" class="w-5 h-5"></i>`;
+    bottomNav.insertBefore(centerBtn, togglePagesBtn);
+
+    centerBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (fanOpen) closeFanMenu();
+      else openFanMenu();
+    });
+  }
+
+  // 點擊背景遮罩收起扇形選單
+  const backdrop = document.createElement("div");
+  backdrop.id = "qe-fan-backdrop";
+  backdrop.addEventListener("click", () => closeFanMenu());
+  document.body.appendChild(backdrop);
+
   const fanLayer = document.createElement("div");
   fanLayer.id = "qe-fan-layer";
-  const fanItems = [
-    { label: "飲食", type: "支出", mainCat: "飲食", subCat: "午餐", dx: -12, dy: -168 },
-    { label: "交通", type: "支出", mainCat: "交通", subCat: "捷運/公車", dx: -76, dy: -146 },
-    { label: "購物", type: "支出", mainCat: "購物", subCat: "日用品", dx: -128, dy: -102 },
-    { label: "貓咪", type: "支出", mainCat: "貓咪", subCat: "嚕哪飼料/罐頭", dx: -158, dy: -46 },
-    { label: "轉帳", type: "轉帳", mainCat: "其他", subCat: "轉帳/調整", dx: -112, dy: 8 }
-  ];
-  fanLayer.innerHTML = fanItems.map((it, i) => `
-    <button class="qe-fan-node" data-fidx="${i}" style="--fan-pos: translate(${it.dx}px, ${it.dy}px) scale(1); transform: translate(${it.dx}px, ${it.dy}px) scale(1);">
-      ${esc(it.label)}
-    </button>
-  `).join("");
   document.body.appendChild(fanLayer);
 
-  const fabGroup = document.createElement("div");
-  fabGroup.id = "qe-fab-group";
-  fabGroup.innerHTML = `
-    <button id="qe-fan-trigger" class="qe-circle-btn" title="扇形快選" aria-label="扇形快選">
-      <i data-lucide="disc" class="w-5 h-5"></i>
-    </button>
-    <button id="qe-fab" class="qe-circle-btn" title="快速記帳" aria-label="快速記帳">
-      <i data-lucide="plus" class="w-6 h-6"></i>
-    </button>
-  `;
-  document.body.appendChild(fabGroup);
+  const fallbackGrid = document.createElement("div");
+  fallbackGrid.id = "qe-fan-grid-fallback";
+  document.body.appendChild(fallbackGrid);
 
+  window.addEventListener("resize", () => {
+    if (fanOpen) renderAdaptiveFanNodes();
+  });
+
+  // 建立毛玻璃記帳 Bottom Sheet
   const sheet = document.createElement("div");
   sheet.id = "qe-modal";
   sheet.className = "hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4";
   sheet.innerHTML = `
     <div class="qe-sheet w-full max-w-md p-4 space-y-2.5 max-h-[92vh] overflow-y-auto text-xs">
-      <!-- 頂部：左右滑動切換 支出 / 收入 / 轉帳 + 層級切換 -->
       <div id="qe-swipe-header" class="flex items-center justify-between gap-2 pb-2 border-b">
         <div class="flex gap-1 bg-slate-800/60 p-1 rounded-2xl">
           ${["支出", "收入", "轉帳"].map(t => `<button data-qtype="${t}" class="qe-type-btn px-3 py-1 rounded-xl font-bold transition">${t}</button>`).join("")}
@@ -542,10 +690,9 @@ function buildQuickEntryUI() {
         </div>
       </div>
 
-      <!-- 常用組合一鍵記 -->
       <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5" id="qe-presets-bar"></div>
 
-      <!-- 轉帳專屬快速帳戶選擇列（切到轉帳時直接顯示） -->
+      <!-- 轉帳專屬快速帳戶選擇列 -->
       <div id="qe-xfer-quick-bar" class="hidden p-2 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 grid grid-cols-2 gap-2">
         <div>
           <span class="text-[10px] text-slate-400 block">轉出帳戶</span>
@@ -597,7 +744,6 @@ function buildQuickEntryUI() {
         <button id="qe-save-combo-btn" class="w-full py-2 rounded-xl btn-soft-dark font-semibold">存為常用組合</button>
       </div>
 
-      <!-- 底部操作列 -->
       <div class="grid grid-cols-2 gap-2 pt-1">
         <button id="qe-save-again-btn" class="py-3 rounded-2xl btn-soft-dark font-bold">儲存並再記一筆</button>
         <button id="qe-save-btn" class="py-3 rounded-2xl btn-soft-accent font-bold">完成儲存</button>
@@ -605,61 +751,16 @@ function buildQuickEntryUI() {
     </div>
   `;
   document.body.appendChild(sheet);
-  if (window.lucide) window.lucide.createIcons();
-
-  // 扇形展開與滑動選取
-  const fanBtn = document.getElementById("qe-fan-trigger");
-  fanBtn.addEventListener("click", () => {
-    fanOpen = !fanOpen;
-    fanLayer.classList.toggle("open", fanOpen);
-  });
-
-  fanLayer.querySelectorAll(".qe-fan-node").forEach(node => {
-    node.addEventListener("click", () => {
-      const item = fanItems[parseInt(node.dataset.fidx, 10)];
-      fanOpen = false;
-      fanLayer.classList.remove("open");
-      openQuickSheet(null, item);
-    });
-  });
-
-  // 支援從扇形鈕按住往扇形泡泡滑動放開
-  let fanDrag = false;
-  fanBtn.addEventListener("touchstart", () => {
-    fanDrag = true;
-    fanOpen = true;
-    fanLayer.classList.add("open");
-  }, { passive: true });
-  fanBtn.addEventListener("touchmove", (e) => {
-    if (!fanDrag) return;
-    const t = e.touches[0];
-    fanLayer.querySelectorAll(".qe-fan-node").forEach(n => {
-      const r = n.getBoundingClientRect();
-      const hit = t.clientX >= r.left - 8 && t.clientX <= r.right + 8 && t.clientY >= r.top - 8 && t.clientY <= r.bottom + 8;
-      n.classList.toggle("hovered", hit);
-    });
-  }, { passive: true });
-  fanBtn.addEventListener("touchend", () => {
-    if (!fanDrag) return;
-    fanDrag = false;
-    const hovered = fanLayer.querySelector(".qe-fan-node.hovered");
-    fanLayer.querySelectorAll(".qe-fan-node").forEach(n => n.classList.remove("hovered"));
-    fanOpen = false;
-    fanLayer.classList.remove("open");
-    if (hovered) {
-      const item = fanItems[parseInt(hovered.dataset.fidx, 10)];
-      openQuickSheet(null, item);
-    }
-  });
+  if (window.lucide) lucide.createIcons();
 
   const oldBtn = document.getElementById("btn-quick-tx");
   if (oldBtn) {
     oldBtn.addEventListener("click", (e) => {
       e.preventDefault(); e.stopImmediatePropagation();
+      closeFanMenu();
       openQuickSheet(null, null);
     }, true);
   }
-  document.getElementById("qe-fab").addEventListener("click", () => openQuickSheet(null, null));
   document.getElementById("qe-close-btn").addEventListener("click", () => sheet.classList.add("hidden"));
 
   const types = ["支出", "收入", "轉帳"];
@@ -687,7 +788,6 @@ function buildQuickEntryUI() {
     btn.addEventListener("click", () => handleCalcKey(btn.dataset.key));
   });
 
-  // 同步兩個帳戶下拉選單的值
   const accXfer = document.getElementById("qe-acc-sel");
   const accNorm = document.getElementById("qe-acc-sel-normal");
   const accTo = document.getElementById("qe-to-acc-sel");
@@ -771,7 +871,8 @@ function openQuickSheet(editTx, presetSeed) {
   calcExpr = seed?.amount ? String(Math.abs(Number(seed.amount))) : "";
   selectedMainCat = seed?.mainCat || mains[0] || "飲食";
   selectedSubCat = seed?.subCat || (cats[selectedMainCat]?.[0] || "午餐");
-  tierLevel = 1;
+  // 若從扇形選單點入且該主類別有多個子類別，先展開第 2 層方便選子類別，否則直接第 1 層輸金額
+  tierLevel = (presetSeed && !presetSeed.isXfer && (cats[selectedMainCat]?.length || 0) > 1) ? 2 : 1;
 
   const accs = getAccountList();
   const catKey = `${selectedMainCat}::${selectedSubCat}`;
