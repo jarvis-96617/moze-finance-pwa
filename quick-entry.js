@@ -16,8 +16,9 @@ let currentType = "支出";
 let selectedMainCat = "";
 let selectedSubCat = "";
 let tierLevel = 1;
-let editingTxId = null;
+let editingTxSnapshot = null;
 let fanOpen = false;
+let qeBooted = false;
 
 let presets = [
   { label: "早餐 55", type: "支出", amount: 55, mainCat: "飲食", subCat: "早餐", account: "現金", name: "早餐" },
@@ -30,6 +31,20 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
+}
+
+function formatIsoDate(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function detectCurrencyByAccount(accName = "") {
+  if (accName.includes("日幣") || accName.includes("JPY")) return "JPY";
+  if (accName.includes("韓幣") || accName.includes("韓元") || accName.includes("KRW")) return "KRW";
+  if (accName.includes("美金") || accName.includes("美元") || accName.includes("USD")) return "USD";
+  return "TWD";
 }
 
 function loadLocalMeta() {
@@ -48,130 +63,65 @@ function saveLocalMeta() {
   try { localStorage.setItem(LAST_CAT_ACC_KEY, JSON.stringify(lastCatAccMap)); } catch (e) {}
 }
 
-// =========================================================================
-// 1. 樣式強化（底部中央扇形快選 + 自適應防重疊 + 按鍵高對比 + 明細防疊字）
-// =========================================================================
 function injectEnhancedStyles() {
   if (document.getElementById("qe-enhanced-style")) return;
   const style = document.createElement("style");
   style.id = "qe-enhanced-style";
   style.textContent = `
-    .nav-indicator { position: relative; }
-    .nav-indicator::after {
-      content: ""; position: absolute; bottom: 2px; width: 16px; height: 3px;
-      border-radius: 999px; background: var(--accent); opacity: 0;
-      transform: scaleX(0.4); transition: opacity .22s ease, transform .22s ease;
-    }
-    .nav-btn.text-cyan-400 .nav-indicator::after { opacity: 1; transform: scaleX(1); }
-
-    /* 底部導覽列中央嵌入的扇形快選鈕（紅框位置） */
     #qe-center-fan-btn {
-      width: 42px;
-      height: 36px;
-      border-radius: 14px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--soft-dark-btn);
-      color: #f8fafc;
+      width: 42px; height: 36px; border-radius: 14px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--soft-dark-btn); color: #f8fafc;
       border: 1px solid var(--soft-dark-border);
       box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
       transition: transform .18s ease, background .18s ease;
       flex-shrink: 0;
     }
     #qe-center-fan-btn:active { transform: scale(.92); }
-    #qe-center-fan-btn.active {
-      background: var(--soft-dark-accent);
-      transform: rotate(45deg);
-    }
+    #qe-center-fan-btn.active { background: var(--soft-dark-accent); transform: rotate(45deg); }
 
-    /* 扇形展開遮罩與節點層 */
     #qe-fan-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 38;
+      position: fixed; inset: 0; z-index: 38;
       background: rgba(15, 23, 42, 0.22);
-      backdrop-filter: blur(3px);
-      -webkit-backdrop-filter: blur(3px);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity .2s ease;
+      backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease;
     }
-    #qe-fan-backdrop.open {
-      opacity: 1;
-      pointer-events: auto;
-    }
+    #qe-fan-backdrop.open { opacity: 1; pointer-events: auto; }
 
     #qe-fan-layer {
-      position: fixed;
-      left: 50%;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 34px);
-      width: 0;
-      height: 0;
-      z-index: 42;
-      pointer-events: none;
+      position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 34px);
+      width: 0; height: 0; z-index: 42; pointer-events: none;
     }
-
     .qe-fan-node {
-      position: absolute;
-      left: 0;
-      top: 0;
-      padding: 7px 12px;
-      border-radius: 999px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 12px;
-      font-weight: 800;
-      line-height: 1.1;
-      color: #f8fafc;
+      position: absolute; left: 0; top: 0; padding: 7px 12px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 800; line-height: 1.1; color: #f8fafc;
       background: linear-gradient(135deg, #2b384e, #3b4d6b);
       border: 1px solid rgba(148, 163, 184, 0.45);
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.30);
-      opacity: 0;
-      pointer-events: none;
-      white-space: nowrap;
+      opacity: 0; pointer-events: none; white-space: nowrap;
       transform: translate(-50%, -50%) scale(0.5);
       transition: transform .24s cubic-bezier(.18, .9, .28, 1.12), opacity .16s ease;
     }
     #qe-fan-layer.open .qe-fan-node {
-      opacity: 1;
-      pointer-events: auto;
+      opacity: 1; pointer-events: auto;
       transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy))) scale(1);
     }
-    .qe-fan-node:active {
-      filter: brightness(1.18);
-    }
-    .qe-fan-node.is-xfer {
-      background: var(--soft-dark-accent);
-      border-color: rgba(125, 211, 252, 0.5);
-    }
+    .qe-fan-node.is-xfer { background: var(--soft-dark-accent); border-color: rgba(125, 211, 252, 0.5); }
 
-    /* 超過 12 項時的自適應多列居中面板備援，絕不溢出螢幕 */
     #qe-fan-grid-fallback {
-      position: fixed;
-      left: 14px;
-      right: 14px;
+      position: fixed; left: 14px; right: 14px;
       bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
-      max-width: 420px;
-      margin: 0 auto;
-      z-index: 42;
-      display: none;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 8px;
-      padding: 12px;
-      border-radius: 22px;
-      background: var(--glass-strong);
-      border: 1px solid var(--card-border);
-      box-shadow: var(--shadow);
+      max-width: 420px; margin: 0 auto; z-index: 42; display: none;
+      flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px;
+      border-radius: 22px; background: var(--glass-strong);
+      border: 1px solid var(--card-border); box-shadow: var(--shadow);
     }
     #qe-fan-grid-fallback.open { display: flex; }
 
     .qe-sheet {
       background-color: var(--glass-strong);
-      -webkit-backdrop-filter: blur(42px) saturate(180%);
-      backdrop-filter: blur(42px) saturate(180%);
+      -webkit-backdrop-filter: blur(42px) saturate(180%); backdrop-filter: blur(42px) saturate(180%);
       border: 1px solid var(--card-border);
       border-radius: 1.85rem 1.85rem 0 0;
       animation: qeUp .26s cubic-bezier(.2,.9,.25,1);
@@ -181,65 +131,35 @@ function injectEnhancedStyles() {
     @keyframes qeUp { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
 
     .qe-key-btn {
-      background-color: #e6eae6;
-      color: #1e293b;
+      background-color: #e6eae6; color: #1e293b;
       border: 1px solid rgba(30,41,59,.14);
-      font-weight: 800;
-      font-size: 15px;
+      font-weight: 800; font-size: 16px;
       transition: transform .1s ease, background-color .12s ease;
     }
     :root[data-theme="dark"] .qe-key-btn {
-      background-color: #2f3d54;
-      color: #f8fafc;
-      border: 1px solid rgba(148,163,184,.28);
+      background-color: #2f3d54; color: #f8fafc; border: 1px solid rgba(148,163,184,.28);
     }
-    .qe-key-btn:active {
-      transform: scale(.94);
-      background-color: #cbd5e1;
-      color: #0f172a;
-    }
-    :root[data-theme="dark"] .qe-key-btn:active {
-      background-color: #475b7a;
-      color: #ffffff;
-    }
+    .qe-key-btn:active { transform: scale(.94); background-color: #cbd5e1; }
+    :root[data-theme="dark"] .qe-key-btn:active { background-color: #475b7a; }
 
-    .swipe-row-wrap {
-      position: relative;
-      overflow: hidden;
-      border-radius: 14px;
-      margin: 5px 0;
-    }
+    .swipe-row-wrap { position: relative; overflow: hidden; border-radius: 14px; margin: 5px 0; }
     .swipe-action-bg {
-      position: absolute;
-      inset: 0;
-      z-index: 1;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 14px;
-      font-size: 11px;
-      font-weight: 800;
-      opacity: 0;
-      transition: opacity .15s ease;
+      position: absolute; inset: 0; z-index: 1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; font-size: 12px; font-weight: 800;
+      opacity: 0; transition: opacity .15s ease;
       background: linear-gradient(90deg, rgba(56,189,248,.18), rgba(251,113,133,.20));
     }
     .swipe-row-wrap.swiping .swipe-action-bg { opacity: 1; }
     .swipe-row-content {
-      position: relative;
-      z-index: 2;
-      background-color: var(--glass-flat);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      transition: transform .18s ease;
-      touch-action: pan-y;
+      position: relative; z-index: 2;
+      background-color: var(--glass-flat); border: 1px solid var(--line);
+      border-radius: 14px; transition: transform .18s ease; touch-action: pan-y;
     }
   `;
   document.head.appendChild(style);
 }
 
-// =========================================================================
-// 2. 流水連動餘額、轉帳排除收支統計、明細防疊字與左右滑動
-// =========================================================================
 function parseYmKeyFromLabel(monthStr) {
   const parts = String(monthStr || "").split("/");
   if (parts.length < 2) return "";
@@ -270,9 +190,7 @@ function computeLiveAccountBalances(state, mIdx, monthStr) {
   const targetYm = parseYmKeyFromLabel(monthStr);
   const accounts = state.globalData?.assets?.accounts || [];
   const baseMap = {};
-  accounts.forEach(a => {
-    baseMap[a.name] = Number(a.values?.[mIdx] || 0);
-  });
+  accounts.forEach(a => { baseMap[a.name] = Number(a.values?.[mIdx] || 0); });
 
   const myEmail = (state.currentUser?.email || "").toLowerCase();
   const monthPersonal = (state.personalTx || []).filter(t => parseYmKeyFromDateStr(t.date) === targetYm);
@@ -313,14 +231,13 @@ function computeLiveAccountBalances(state, mIdx, monthStr) {
 
   monthPersonal.forEach(applyDelta);
   monthSharedMyPaid.forEach(applyDelta);
-
   return baseMap;
 }
 
 function patchLedgerAndBalances() {
-  const state = window.__FINANCE_APP__.getState();
+  const state = window.__FINANCE_APP__?.getState?.();
   const selMonth = document.getElementById("select-month");
-  if (!selMonth || !state.globalData) return;
+  if (!selMonth || !state || !state.globalData) return;
 
   const mIdx = parseInt(selMonth.value || "0", 10);
   const monthStr = selMonth.options[selMonth.selectedIndex]?.text || "";
@@ -376,21 +293,28 @@ function patchLedgerAndBalances() {
           </div>
           <div class="swipe-row-content p-2.5 flex justify-between items-center gap-2 text-xs">
             <div class="min-w-0 flex-1">
-              <div class="font-bold truncate">${esc(tx.name || tx.subCat || tx.mainCat || tx.type)} <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">${esc(tx.mainCat || "")}${tx.subCat ? "·" + esc(tx.subCat) : ""}</span></div>
-              <div class="text-[10px] text-slate-400 truncate mt-0.5">${esc(tx.date || "")} ${esc(tx.time || "")} · ${esc(tx.account || "")}${tx.toAccount ? " → " + esc(tx.toAccount) : ""}${tx.project ? " · #" + esc(tx.project) : ""}${isShared && tx.payerLabel ? " · 付:" + esc(tx.payerLabel) : ""}</div>
+              <div class="font-bold truncate">${esc(tx.name || tx.subCat || tx.mainCat || tx.type)} <span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">${esc(tx.mainCat || "")}${tx.subCat ? "·" + esc(tx.subCat) : ""}</span></div>
+              <div class="text-[11px] text-slate-400 truncate mt-0.5">${esc(tx.date || "")} ${esc(tx.time || "")} · ${esc(tx.account || "")}${tx.toAccount ? " → " + esc(tx.toAccount) : ""}${tx.project ? " · #" + esc(tx.project) : ""}${isShared && tx.payerLabel ? " · 付:" + esc(tx.payerLabel) : ""}</div>
             </div>
             <div class="font-extrabold whitespace-nowrap shrink-0 ${colorCls}">${sign}${esc(tx.currency || "TWD")} ${Math.abs(Number(tx.amount || 0)).toLocaleString()}</div>
           </div>`;
 
         const content = wrap.querySelector(".swipe-row-content");
-        let startX = 0, curDx = 0;
+        let startX = 0, startY = 0, curDx = 0, lockedAxis = null;
         content.addEventListener("touchstart", (e) => {
           startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
           curDx = 0;
+          lockedAxis = null;
         }, { passive: true });
         content.addEventListener("touchmove", (e) => {
-          curDx = e.touches[0].clientX - startX;
-          if (Math.abs(curDx) > 12) {
+          const dx = e.touches[0].clientX - startX;
+          const dy = e.touches[0].clientY - startY;
+          if (!lockedAxis && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+            lockedAxis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+          }
+          if (lockedAxis === "x") {
+            curDx = dx;
             wrap.classList.add("swiping");
             content.style.transform = `translateX(${Math.max(-76, Math.min(76, curDx))}px)`;
           }
@@ -398,16 +322,16 @@ function patchLedgerAndBalances() {
         content.addEventListener("touchend", async () => {
           content.style.transform = "";
           wrap.classList.remove("swiping");
-          if (curDx < -55) {
+          if (lockedAxis === "x" && curDx < -55) {
             const uid = auth.currentUser.uid;
             if (isShared) await deleteDoc(doc(db, "sharedBooks", state.activeBookId, "transactions", tx.id));
             else await deleteDoc(doc(db, "users", uid, "transactions", tx.id));
-            await window.__FINANCE_APP__.reloadAll();
             window.showToast("已刪除紀錄");
-          } else if (curDx > 55) {
+          } else if (lockedAxis === "x" && curDx > 55) {
             openQuickSheet(tx, null);
           }
           curDx = 0;
+          lockedAxis = null;
         });
         content.addEventListener("dblclick", () => openQuickSheet(tx, null));
         listEl.appendChild(wrap);
@@ -496,9 +420,6 @@ function patchLedgerAndBalances() {
   }
 }
 
-// =========================================================================
-// 3. 底部中央置中扇形選單（自動依選項數量與螢幕寬度調整，不破圖不疊圖）
-// =========================================================================
 function getAccountList() {
   const state = window.__FINANCE_APP__.getState();
   const accs = (state.globalData?.assets?.accounts || [])
@@ -536,16 +457,14 @@ function renderAdaptiveFanNodes() {
 
   const items = getFanDynamicItems();
   const vw = Math.min(window.innerWidth || 393, 440);
-  // 留左右各 38px 安全邊距，確保膠囊絕不切出螢幕左右邊緣
   const maxHalfSpan = Math.max(115, (vw / 2) - 42);
 
   fanLayer.innerHTML = "";
   fallbackGrid.innerHTML = "";
 
-  // 若選項超過 13 個，自動切換為置中自適應圓弧膠囊群組，保證絕不重疊
   if (items.length > 13) {
     fanLayer.dataset.mode = "grid";
-    items.forEach((it, idx) => {
+    items.forEach((it) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = `px-3 py-2 rounded-full text-xs font-extrabold text-slate-50 border ${it.isXfer ? "btn-soft-accent" : "btn-soft-dark"}`;
@@ -561,8 +480,6 @@ function renderAdaptiveFanNodes() {
   }
 
   fanLayer.dataset.mode = "arc";
-
-  // 依據總數量自動分成 1 圈（<=5項）或 2 圈同心上弧（6~13項）
   const rings = [];
   if (items.length <= 5) {
     rings.push({ list: items, radius: Math.min(126, maxHalfSpan * 0.96), startDeg: -158, endDeg: -22 });
@@ -583,7 +500,6 @@ function renderAdaptiveFanNodes() {
         ? -90
         : ring.startDeg + ((ring.endDeg - ring.startDeg) * i) / (n - 1);
       const rad = (deg * Math.PI) / 180;
-      // 限制水平偏移不超過 maxHalfSpan，垂直往上展開
       const rawX = Math.cos(rad) * ring.radius;
       const fx = Math.max(-maxHalfSpan, Math.min(maxHalfSpan, rawX));
       const fy = Math.sin(rad) * ring.radius - (rIdx * 6);
@@ -634,10 +550,6 @@ function closeFanMenu() {
 function buildQuickEntryUI() {
   if (document.getElementById("qe-center-fan-btn")) return;
 
-  // 清除舊版懸浮群組（若殘留）
-  document.getElementById("qe-fab-group")?.remove();
-
-  // 將扇形觸發鈕置中嵌入底部 <nav> 紅框位置（目前：記帳明細 與 切換頁面 之間）
   const bottomNav = document.querySelector("nav.fixed");
   const togglePagesBtn = document.getElementById("btn-toggle-pages");
   if (bottomNav && togglePagesBtn) {
@@ -656,7 +568,6 @@ function buildQuickEntryUI() {
     });
   }
 
-  // 點擊背景遮罩收起扇形選單
   const backdrop = document.createElement("div");
   backdrop.id = "qe-fan-backdrop";
   backdrop.addEventListener("click", () => closeFanMenu());
@@ -674,9 +585,10 @@ function buildQuickEntryUI() {
     if (fanOpen) renderAdaptiveFanNodes();
   });
 
-  // 建立毛玻璃記帳 Bottom Sheet
   const sheet = document.createElement("div");
   sheet.id = "qe-modal";
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
   sheet.className = "hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4";
   sheet.innerHTML = `
     <div class="qe-sheet w-full max-w-md p-4 space-y-2.5 max-h-[92vh] overflow-y-auto text-xs">
@@ -686,44 +598,40 @@ function buildQuickEntryUI() {
         </div>
         <div class="flex items-center gap-1.5">
           <button id="qe-tier-btn" class="px-2.5 py-1 rounded-xl btn-soft-dark font-bold">第1層：金額</button>
-          <button id="qe-close-btn" class="p-1 text-slate-400"><i data-lucide="x" class="w-5 h-5"></i></button>
+          <button id="qe-close-btn" aria-label="關閉視窗" class="p-1 text-slate-400"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
       </div>
 
       <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5" id="qe-presets-bar"></div>
 
-      <!-- 轉帳專屬快速帳戶選擇列 -->
       <div id="qe-xfer-quick-bar" class="hidden p-2 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 grid grid-cols-2 gap-2">
         <div>
-          <span class="text-[10px] text-slate-400 block">轉出帳戶</span>
-          <select id="qe-acc-sel" class="w-full p-1.5 mt-0.5 text-xs font-bold"></select>
+          <span class="text-[11px] text-slate-400 block">轉出帳戶</span>
+          <select id="qe-acc-sel" aria-label="轉出帳戶" class="w-full p-1.5 mt-0.5 font-bold"></select>
         </div>
         <div>
-          <span class="text-[10px] text-cyan-400 block">轉入帳戶</span>
-          <select id="qe-to-acc-sel" class="w-full p-1.5 mt-0.5 text-xs font-bold"></select>
+          <span class="text-[11px] text-cyan-400 block">轉入帳戶</span>
+          <select id="qe-to-acc-sel" aria-label="轉入帳戶" class="w-full p-1.5 mt-0.5 font-bold"></select>
         </div>
       </div>
 
-      <!-- 金額顯示區 -->
       <div class="p-3 rounded-2xl bg-slate-800/50 border flex items-center justify-between gap-2">
         <div class="min-w-0">
           <div class="text-[11px] font-bold text-cyan-400 truncate" id="qe-sel-summary">支出 · 飲食 · 午餐 · 現金</div>
-          <input type="text" id="qe-name-input" class="mt-1 px-2 py-1 text-xs w-44" placeholder="備註名稱（可選）">
+          <input type="text" id="qe-name-input" class="mt-1 px-2 py-1 w-44" placeholder="備註名稱（可選）">
         </div>
         <div class="text-right shrink-0">
-          <div class="text-[10px] text-slate-400">NT$</div>
+          <div class="text-[11px] text-slate-400" id="qe-cur-label">TWD</div>
           <div id="qe-amount-display" class="text-2xl font-extrabold tracking-tight text-cyan-400">0</div>
         </div>
       </div>
 
-      <!-- 第一層：大數字鍵盤 -->
       <div id="qe-tier-1" class="grid grid-cols-4 gap-2">
         ${["7","8","9","⌫","4","5","6","+","1","2","3","-","C","0","00","="].map(k => `
           <button data-key="${k}" class="qe-key-btn py-3 rounded-2xl">${esc(k)}</button>
         `).join("")}
       </div>
 
-      <!-- 第二層：主類別與子類別大格子 -->
       <div id="qe-tier-2" class="hidden space-y-2.5">
         <div class="text-[11px] font-bold text-slate-400">主類別（點選展開子類別）</div>
         <div id="qe-main-grid" class="grid grid-cols-3 gap-2"></div>
@@ -731,16 +639,16 @@ function buildQuickEntryUI() {
         <div id="qe-sub-grid" class="grid grid-cols-3 gap-2"></div>
       </div>
 
-      <!-- 第三層：帳戶、專案、標籤 -->
       <div id="qe-tier-3" class="hidden space-y-2.5">
         <div id="qe-normal-acc-box">
           <span class="text-slate-400">扣款 / 入帳帳戶</span>
-          <select id="qe-acc-sel-normal" class="w-full p-2 mt-1"></select>
+          <select id="qe-acc-sel-normal" aria-label="扣款或入帳帳戶" class="w-full p-2 mt-1"></select>
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <div><span class="text-slate-400">專案</span><select id="qe-proj-sel" class="w-full p-2 mt-1"></select></div>
-          <div><span class="text-slate-400">標籤</span><input type="text" id="qe-tags-inp" class="w-full p-2 mt-1" placeholder="#外食"></div>
+          <div><span class="text-slate-400">日期</span><input type="date" id="qe-date-inp" class="w-full p-2 mt-1"></div>
+          <div><span class="text-slate-400">專案</span><select id="qe-proj-sel" aria-label="專案" class="w-full p-2 mt-1"></select></div>
         </div>
+        <div><span class="text-slate-400">標籤</span><input type="text" id="qe-tags-inp" class="w-full p-2 mt-1" placeholder="#外食"></div>
         <button id="qe-save-combo-btn" class="w-full py-2 rounded-xl btn-soft-dark font-semibold">存為常用組合</button>
       </div>
 
@@ -752,6 +660,10 @@ function buildQuickEntryUI() {
   `;
   document.body.appendChild(sheet);
   if (window.lucide) lucide.createIcons();
+
+  sheet.addEventListener("click", (e) => {
+    if (e.target === sheet) sheet.classList.add("hidden");
+  });
 
   const oldBtn = document.getElementById("btn-quick-tx");
   if (oldBtn) {
@@ -860,18 +772,26 @@ function handleCalcKey(k) {
   document.getElementById("qe-amount-display").textContent = calcExpr || "0";
 }
 
+function normalizeDateForInput(dateStr) {
+  if (!dateStr) return formatIsoDate(new Date());
+  const parts = String(dateStr).replace(/\//g, "-").split("-");
+  if (parts.length === 3) {
+    return `${parts[0]}-${parts[1].padStart(2, "0")}-${parts[2].padStart(2, "0")}`;
+  }
+  return formatIsoDate(new Date());
+}
+
 function openQuickSheet(editTx, presetSeed) {
   const state = window.__FINANCE_APP__.getState();
   const cats = state.categories || {};
   const mains = Object.keys(cats);
   const seed = editTx || presetSeed || null;
 
-  editingTxId = editTx?.id || null;
+  editingTxSnapshot = editTx ? { ...editTx } : null;
   currentType = seed?.type === "轉出" || seed?.type === "轉入" ? "轉帳" : (seed?.type || "支出");
   calcExpr = seed?.amount ? String(Math.abs(Number(seed.amount))) : "";
   selectedMainCat = seed?.mainCat || mains[0] || "飲食";
   selectedSubCat = seed?.subCat || (cats[selectedMainCat]?.[0] || "午餐");
-  // 若從扇形選單點入且該主類別有多個子類別，先展開第 2 層方便選子類別，否則直接第 1 層輸金額
   tierLevel = (presetSeed && !presetSeed.isXfer && (cats[selectedMainCat]?.length || 0) > 1) ? 2 : 1;
 
   const accs = getAccountList();
@@ -895,6 +815,7 @@ function openQuickSheet(editTx, presetSeed) {
   const projSel = document.getElementById("qe-proj-sel");
   projSel.innerHTML = `<option value="">無專案</option>` + (state.projects || []).map(p => `<option value="${esc(p.name)}" ${p.name === editTx?.project ? "selected" : ""}>${esc(p.name)}</option>`).join("");
 
+  document.getElementById("qe-date-inp").value = normalizeDateForInput(editTx?.date);
   document.getElementById("qe-name-input").value = editTx?.name || "";
   document.getElementById("qe-tags-inp").value = editTx?.tags || "";
   document.getElementById("qe-amount-display").textContent = calcExpr || "0";
@@ -986,6 +907,9 @@ function updateQuickSummary() {
   const acc = getSelectedAccount() || "現金";
   const toAcc = document.getElementById("qe-to-acc-sel")?.value || "";
   const accPart = currentType === "轉帳" ? `${acc} → ${toAcc}` : acc;
+  const cur = editingTxSnapshot?.currency || detectCurrencyByAccount(acc);
+  const curEl = document.getElementById("qe-cur-label");
+  if (curEl) curEl.textContent = cur;
   document.getElementById("qe-sel-summary").textContent = `${currentType} · ${selectedMainCat} · ${selectedSubCat} · ${accPart}`;
 }
 
@@ -1024,44 +948,68 @@ async function commitQuickTx(keepOpen) {
   const nameVal = document.getElementById("qe-name-input").value.trim() || (currentType === "轉帳" ? `${acc}→${toAcc}` : selectedSubCat);
   const projVal = document.getElementById("qe-proj-sel").value || "";
   const tagsVal = document.getElementById("qe-tags-inp").value.trim() || "";
+  const pickedDate = document.getElementById("qe-date-inp").value || formatIsoDate(now);
 
   lastCatAccMap[`${selectedMainCat}::${selectedSubCat}`] = acc;
   saveLocalMeta();
 
-  const payload = {
-    type: currentType,
-    account: acc,
-    toAccount: toAcc,
-    currency: "TWD",
-    amount: amt,
-    fee: 0,
-    discount: 0,
-    mainCat: selectedMainCat,
-    subCat: selectedSubCat,
-    name: nameVal,
-    merchant: "",
-    date: `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`,
-    time: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-    ts: Date.now(),
-    project: projVal,
-    tags: tagsVal,
-    payerEmail: state.currentUser.email,
-    payerLabel: state.currentUser.email,
-    updatedAt: now.toISOString()
-  };
-
   const isShared = state.activeBookId !== "personal";
-  if (editingTxId) {
-    if (isShared) await updateDoc(doc(db, "sharedBooks", state.activeBookId, "transactions", editingTxId), payload);
-    else await updateDoc(doc(db, "users", uid, "transactions", editingTxId), payload);
-    editingTxId = null;
+
+  if (editingTxSnapshot) {
+    // 編輯模式：保留原交易的 time、ts、currency、fee、discount、merchant、payerEmail 等未改動欄位
+    const origTime = editingTxSnapshot.time || `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const parsedTs = Date.parse(`${pickedDate.replace(/-/g, "/")} ${origTime}`);
+    const payload = {
+      ...editingTxSnapshot,
+      type: currentType,
+      account: acc,
+      toAccount: toAcc,
+      currency: editingTxSnapshot.currency || detectCurrencyByAccount(acc),
+      amount: amt,
+      mainCat: selectedMainCat,
+      subCat: selectedSubCat,
+      name: nameVal,
+      date: pickedDate,
+      time: origTime,
+      ts: !isNaN(parsedTs) ? parsedTs : (editingTxSnapshot.ts || Date.now()),
+      project: projVal,
+      tags: tagsVal,
+      updatedAt: now.toISOString()
+    };
+    delete payload.id;
+
+    if (isShared) await updateDoc(doc(db, "sharedBooks", state.activeBookId, "transactions", editingTxSnapshot.id), payload);
+    else await updateDoc(doc(db, "users", uid, "transactions", editingTxSnapshot.id), payload);
+    editingTxSnapshot = null;
   } else {
+    const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const parsedTs = Date.parse(`${pickedDate.replace(/-/g, "/")} ${timeStr}`);
+    const payload = {
+      type: currentType,
+      account: acc,
+      toAccount: toAcc,
+      currency: detectCurrencyByAccount(acc),
+      amount: amt,
+      fee: 0,
+      discount: 0,
+      mainCat: selectedMainCat,
+      subCat: selectedSubCat,
+      name: nameVal,
+      merchant: "",
+      date: pickedDate,
+      time: timeStr,
+      ts: !isNaN(parsedTs) ? parsedTs : Date.now(),
+      project: projVal,
+      tags: tagsVal,
+      payerEmail: state.currentUser.email,
+      payerLabel: state.currentUser.email,
+      updatedAt: now.toISOString()
+    };
+
     if (isShared) await addDoc(collection(db, "sharedBooks", state.activeBookId, "transactions"), payload);
     else await addDoc(collection(db, "users", uid, "transactions"), payload);
   }
 
-  await window.__FINANCE_APP__.reloadAll();
-  patchLedgerAndBalances();
   window.showToast(`已儲存 ${currentType} $${amt.toLocaleString()}`);
 
   if (keepOpen) {
@@ -1078,17 +1026,18 @@ async function commitQuickTx(keepOpen) {
 loadLocalMeta();
 injectEnhancedStyles();
 
-const readyTimer = setInterval(() => {
-  const api = window.__FINANCE_APP__;
-  const st = api?.getState?.();
-  if (st && st.currentUser) {
-    clearInterval(readyTimer);
-    buildQuickEntryUI();
-    patchLedgerAndBalances();
-    setInterval(() => {
-      if (window.__FINANCE_APP__?.getState?.()?.currentUser) {
-        patchLedgerAndBalances();
-      }
-    }, 1500);
-  }
-}, 400);
+function bootQuickEntry() {
+  if (qeBooted) return;
+  const st = window.__FINANCE_APP__?.getState?.();
+  if (!st || !st.currentUser) return;
+  qeBooted = true;
+  buildQuickEntryUI();
+  patchLedgerAndBalances();
+}
+
+window.addEventListener("finance:ready", bootQuickEntry);
+window.addEventListener("finance:render", () => {
+  bootQuickEntry();
+  patchLedgerAndBalances();
+});
+bootQuickEntry();

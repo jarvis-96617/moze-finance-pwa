@@ -10,20 +10,25 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const BACKUP_META_KEY = "mozeLastBackupIso";
-const BACKUP_INTERVAL_DAYS = 7; // 每 7 天提醒一次備份 CSV 至自己的雲端硬碟
+const BACKUP_INTERVAL_DAYS = 7;
 
 let notifyRules = [];
 let pendingDrafts = [];
 let unsubDrafts = null;
+let stage3Booted = false;
 
-const bootTimer = setInterval(() => {
-  const api = window.__FINANCE_APP__;
-  const state = api?.getState?.();
+function bootStage3() {
+  if (stage3Booted) return;
+  const state = window.__FINANCE_APP__?.getState?.();
   if (state && state.currentUser && document.getElementById("top-tools-drawer")) {
-    clearInterval(bootTimer);
+    stage3Booted = true;
     initStage3(state.currentUser);
   }
-}, 400);
+}
+
+window.addEventListener("finance:ready", bootStage3);
+window.addEventListener("finance:render", bootStage3);
+bootStage3();
 
 async function initStage3(user) {
   injectDrawerButtons();
@@ -33,9 +38,6 @@ async function initStage3(user) {
   checkPeriodicBackupReminder();
 }
 
-// =========================================================================
-// 1. 將「通知草稿、MOZE CSV、月結確認」放入頂部「工具」展開選單（含中文名稱）
-// =========================================================================
 function injectDrawerButtons() {
   const drawer = document.getElementById("top-tools-drawer");
   if (!drawer || document.getElementById("btn-open-drafts")) return;
@@ -77,7 +79,6 @@ function injectDrawerButtons() {
   });
 }
 
-// 定期備份提醒（方案 A）：免設 GAS，提醒產出 CSV 並存至自己的 Google 雲端硬碟 / 檔案
 function checkPeriodicBackupReminder() {
   const lastIso = localStorage.getItem(BACKUP_META_KEY);
   const daysPassed = lastIso ? Math.floor((Date.now() - new Date(lastIso).getTime()) / 86400000) : 999;
@@ -114,11 +115,11 @@ function injectStage3Modals() {
   if (document.getElementById("drafts-modal")) return;
   const wrap = document.createElement("div");
   wrap.innerHTML = `
-  <div id="drafts-modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div id="drafts-modal" role="dialog" aria-modal="true" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="modal-sheet w-full max-w-lg p-5 space-y-3 max-h-[92vh] overflow-y-auto text-xs">
       <div class="flex justify-between items-center border-b pb-2.5">
         <h3 class="text-base font-bold flex items-center gap-1.5"><i data-lucide="bell-ring" class="w-4 h-4 text-amber-400"></i> iOS 捷徑通知草稿箱</h3>
-        <button onclick="document.getElementById('drafts-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <button aria-label="關閉視窗" onclick="document.getElementById('drafts-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
       <div class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-slate-300">
         收到銀行/LINE Pay 通知後會即時出現在此。點擊草稿可標記<b>關鍵字</b>或<b>卡片帳戶</b>建立自動帶入規則，或直接連結既有紀錄避免重複。
@@ -132,11 +133,11 @@ function injectStage3Modals() {
     </div>
   </div>
 
-  <div id="csv-modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div id="csv-modal" role="dialog" aria-modal="true" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="modal-sheet w-full max-w-lg p-5 space-y-3 max-h-[92vh] overflow-y-auto text-xs">
       <div class="flex justify-between items-center border-b pb-2.5">
         <h3 class="text-base font-bold flex items-center gap-1.5"><i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i> MOZE 4.0 CSV 轉移與備份</h3>
-        <button onclick="document.getElementById('csv-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <button aria-label="關閉視窗" onclick="document.getElementById('csv-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
 
       <div class="p-3 rounded-2xl bg-slate-800/50 border space-y-2">
@@ -160,11 +161,11 @@ function injectStage3Modals() {
     </div>
   </div>
 
-  <div id="wizard-modal" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div id="wizard-modal" role="dialog" aria-modal="true" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="modal-sheet w-full max-w-lg p-5 space-y-3 max-h-[92vh] overflow-y-auto text-xs">
       <div class="flex justify-between items-center border-b pb-2.5">
         <h3 class="text-base font-bold flex items-center gap-1.5"><i data-lucide="clipboard-check" class="w-4 h-4 text-purple-400"></i> 每月薪資與資產確認精靈</h3>
-        <button onclick="document.getElementById('wizard-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <button aria-label="關閉視窗" onclick="document.getElementById('wizard-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
       <div id="wizard-body" class="space-y-3"></div>
     </div>
@@ -231,7 +232,7 @@ function renderDraftsModal() {
           <div class="font-medium text-slate-200 leading-relaxed">${escHtml(d.rawText)}</div>
           <span class="font-extrabold text-amber-400 shrink-0">NT$ ${Number(d.parsedAmount || 0).toLocaleString()}</span>
         </div>
-        <div class="text-[10px] text-slate-400 flex flex-wrap justify-between items-center gap-1">
+        <div class="text-[11px] text-slate-400 flex flex-wrap justify-between items-center gap-1">
           <span>${escHtml(d.parsedDate || "")} ${escHtml(d.parsedTime || "")} · 帶入：${escHtml(sug.account)} / ${escHtml(sug.mainCat)}-${escHtml(sug.subCat)}</span>
           <div class="flex gap-1.5">
             <button data-did="${d.id}" class="btn-edit-draft px-2 py-0.5 rounded btn-soft-dark font-semibold">標記/入帳</button>
@@ -286,7 +287,7 @@ function openDraftEditor(draftId) {
       <div><span class="text-slate-400">帳戶辨識字</span><input type="text" id="ed-acc-match" value="${escHtml(sug.accountMatch)}" class="w-full p-1.5 mt-0.5"></div>
     </div>
     <div class="grid grid-cols-3 gap-2">
-      <div><span class="text-slate-400">金額</span><input type="number" id="ed-amt" value="${draft.parsedAmount || 0}" class="w-full p-1.5 mt-0.5 font-bold"></div>
+      <div><span class="text-slate-400">金額</span><input type="number" inputmode="decimal" id="ed-amt" value="${draft.parsedAmount || 0}" class="w-full p-1.5 mt-0.5 font-bold"></div>
       <div><span class="text-slate-400">對應帳戶</span><select id="ed-acc" class="w-full p-1.5 mt-0.5">${accs.map(a => `<option value="${escHtml(a)}" ${a === sug.account ? "selected" : ""}>${escHtml(a)}</option>`).join("")}</select></div>
       <div><span class="text-slate-400">名稱</span><input type="text" id="ed-name" value="${escHtml(sug.name)}" class="w-full p-1.5 mt-0.5"></div>
     </div>
@@ -336,13 +337,15 @@ function openDraftEditor(draftId) {
     const mainCat = mainSel.value; const subCat = subSel.value;
     const name = document.getElementById("ed-name").value.trim() || kw || subCat;
     const amount = parseFloat(document.getElementById("ed-amt").value) || 0;
+    const now = new Date();
+    const isoDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
     const txRef = await addDoc(collection(db, "users", uid, "transactions"), {
       type: "支出", account: targetAccount, currency: "TWD", amount, fee: 0, discount: 0,
       mainCat, subCat, name, merchant: kw,
-      date: draft.parsedDate || new Date().toLocaleDateString("zh-TW"),
+      date: draft.parsedDate || isoDate,
       time: draft.parsedTime || "12:00", ts: Date.now(),
-      note: "由 iOS 捷徑通知草稿轉入", updatedAt: new Date().toISOString()
+      note: "由 iOS 捷徑通知草稿轉入", updatedAt: now.toISOString()
     });
     if (kw || accMatch) {
       notifyRules = notifyRules.filter(r => !(r.keyword === kw && r.accountMatch === accMatch));
@@ -350,7 +353,6 @@ function openDraftEditor(draftId) {
       await saveNotifyRules(uid);
     }
     await updateDoc(doc(db, "users", uid, "drafts", draft.id), { status: "confirmed", linkedTxId: txRef.id });
-    await window.__FINANCE_APP__.reloadAll();
     renderDraftsModal(); window.showToast("已確認入帳並記憶規則");
   };
 
@@ -411,7 +413,9 @@ function bindCsvEvents() {
       const amt = parseFloat(r[idx.amt]) || 0;
       const fee = idx.fee >= 0 ? (parseFloat(r[idx.fee]) || 0) : 0;
       const disc = idx.disc >= 0 ? (parseFloat(r[idx.disc]) || 0) : 0;
-      const dateStr = idx.date >= 0 ? (r[idx.date] || "").trim() : "";
+      const rawDate = idx.date >= 0 ? (r[idx.date] || "").trim() : "";
+      const dParts = rawDate.replace(/\//g, "-").split("-");
+      const dateStr = dParts.length === 3 ? `${dParts[0]}-${dParts[1].padStart(2, "0")}-${dParts[2].padStart(2, "0")}` : rawDate;
       const timeStr = idx.time >= 0 ? (r[idx.time] || "").trim() : "09:00";
       const parsedTs = Date.parse(`${dateStr.replace(/-/g, "/")} ${timeStr}`) || Date.now();
       parsedCsvRecords.push({
@@ -479,7 +483,7 @@ function bindCsvEvents() {
       await setDoc(doc(db, "users", uid, "overview", "latest"), state.globalData, { merge: true });
     }
 
-    await window.__FINANCE_APP__.reloadAll();
+    window.__FINANCE_APP__.refreshView();
     document.getElementById("csv-modal").classList.add("hidden");
     window.showToast("MOZE CSV 匯入完成！");
   });
@@ -529,20 +533,21 @@ function openSettlementWizard() {
     const uid = auth.currentUser.uid;
     const salAcc = document.getElementById("wiz-sal-acc").value.trim() || "台新薪轉戶";
     const genTx = document.getElementById("wiz-gen-tx").checked;
-    const todayStr = new Date().toLocaleDateString("zh-TW");
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const marker = `[月結:${monthStr}]`;
 
     if (genTx) {
       const exists = (state.personalTx || []).some(t => String(t.note || "").includes(marker));
       if (!exists) {
-        if (totalSal > 0) await addDoc(collection(db, "users", uid, "transactions"), { type: "收入", account: salAcc, currency: "TWD", amount: totalSal, mainCat: "其他", subCat: "薪水", name: `${monthStr} 實發薪資`, note: marker, date: todayStr, time: "09:00", ts: Date.now(), updatedAt: new Date().toISOString() });
-        if (mort > 0) await addDoc(collection(db, "users", uid, "transactions"), { type: "轉帳", account: salAcc, toAccount: "彰化銀行(房貸)", currency: "TWD", amount: mort, mainCat: "家居", subCat: "房租/房貸", name: `${monthStr} 房貸轉帳`, note: marker, date: todayStr, time: "09:05", ts: Date.now() + 1, updatedAt: new Date().toISOString() });
-        if (luna > 0) await addDoc(collection(db, "users", uid, "transactions"), { type: "轉帳", account: salAcc, toAccount: "國泰嚕哪基金", currency: "TWD", amount: luna, mainCat: "貓咪", subCat: "嚕哪飼料/罐頭", name: `${monthStr} 嚕哪每月基金`, note: marker, date: todayStr, time: "09:10", ts: Date.now() + 2, updatedAt: new Date().toISOString() });
+        if (totalSal > 0) await addDoc(collection(db, "users", uid, "transactions"), { type: "收入", account: salAcc, currency: "TWD", amount: totalSal, mainCat: "其他", subCat: "薪水", name: `${monthStr} 實發薪資`, note: marker, date: todayStr, time: "09:00", ts: Date.now(), updatedAt: now.toISOString() });
+        if (mort > 0) await addDoc(collection(db, "users", uid, "transactions"), { type: "轉帳", account: salAcc, toAccount: "彰化銀行(房貸)", currency: "TWD", amount: mort, mainCat: "家居", subCat: "房租/房貸", name: `${monthStr} 房貸轉帳`, note: marker, date: todayStr, time: "09:05", ts: Date.now() + 1, updatedAt: now.toISOString() });
+        if (luna > 0) await addDoc(collection(db, "users", uid, "transactions"), { type: "轉帳", account: salAcc, toAccount: "國泰嚕哪基金", currency: "TWD", amount: luna, mainCat: "貓咪", subCat: "嚕哪飼料/罐頭", name: `${monthStr} 嚕哪每月基金`, note: marker, date: todayStr, time: "09:10", ts: Date.now() + 2, updatedAt: now.toISOString() });
       } else {
         window.showToast(`${monthStr} 固定流水已存在，略過重複產生`);
       }
     }
-    await window.__FINANCE_APP__.reloadAll();
+    window.__FINANCE_APP__.refreshView();
     document.getElementById("wizard-modal").classList.add("hidden");
     if (state.userProfile?.gasUrl) document.getElementById("btn-sync-sheet")?.click();
     window.showToast(`${monthStr} 月結確認完成`);
