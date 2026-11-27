@@ -159,9 +159,19 @@ function injectEnhancedStyles() {
       border-radius: 1.85rem 1.85rem 0 0;
       animation: qeUp .24s cubic-bezier(.2,.9,.25,1);
       padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+      overflow-x: hidden;
+      max-width: 100%;
     }
     @media (min-width: 640px) { .qe-sheet { border-radius: 1.85rem; } }
     @keyframes qeUp { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+    .qe-date-input {
+      min-width: 0 !important;
+      max-width: 100% !important;
+      flex: 1 1 0;
+      font-size: 14px !important;
+      padding: 6px 8px !important;
+    }
 
     .qe-key-btn {
       background-color: var(--btn-sec-bg); color: var(--ink);
@@ -748,7 +758,7 @@ function buildQuickEntryUI() {
   sheet.setAttribute("aria-modal", "true");
   sheet.className = "hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4";
   sheet.innerHTML = `
-    <div id="qe-sheet-card" class="qe-sheet w-full max-w-md p-4 space-y-2.5 max-h-[94vh] overflow-y-auto text-xs">
+    <div id="qe-sheet-card" class="qe-sheet w-full max-w-md p-4 space-y-2 max-h-[94vh] overflow-y-auto text-xs">
       <div id="qe-grabber-zone" class="pt-0.5 pb-1 flex flex-col items-center cursor-grab">
         <div class="w-10 h-1.5 rounded-full bg-slate-400/40"></div>
       </div>
@@ -765,7 +775,8 @@ function buildQuickEntryUI() {
 
       <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5" id="qe-presets-bar"></div>
 
-      <div class="p-3 rounded-2xl bg-slate-800/40 border flex items-center justify-between gap-2">
+      <!-- 金額與名稱顯示區 -->
+      <div class="p-3 rounded-2xl bg-slate-800/40 border flex items-center justify-between gap-2 min-w-0">
         <div class="min-w-0 flex-1">
           <div class="text-xs font-bold text-cyan-400 truncate" id="qe-sel-summary">支出 · 飲食 · 午餐</div>
           <input type="text" id="qe-name-input" class="mt-1.5 px-2.5 py-1.5 w-full" placeholder="備註名稱（可選）">
@@ -776,27 +787,31 @@ function buildQuickEntryUI() {
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <select id="qe-acc-sel" aria-label="選擇帳戶" class="w-full p-2 font-bold"></select>
-        </div>
-        <div class="flex items-center gap-1">
-          <button type="button" id="qe-date-today" class="px-2.5 py-2 rounded-xl btn-primary text-xs font-bold shrink-0">今天</button>
-          <button type="button" id="qe-date-yest" class="px-2.5 py-2 rounded-xl btn-secondary text-xs font-bold shrink-0">昨天</button>
-          <input type="date" id="qe-date-inp" aria-label="選擇日期" class="w-full p-1.5">
-        </div>
+      <!-- 第 1 行：帳戶選擇 -->
+      <div class="min-w-0">
+        <select id="qe-acc-sel" aria-label="選擇帳戶" class="w-full p-2 font-bold"></select>
       </div>
 
-      <div id="qe-xfer-to-wrap" class="hidden">
+      <!-- 轉帳專用：轉入帳戶 -->
+      <div id="qe-xfer-to-wrap" class="hidden min-w-0">
         <span class="text-xs text-cyan-400 font-bold">轉入帳戶</span>
         <select id="qe-to-acc-sel" aria-label="轉入帳戶" class="w-full p-2 mt-1 font-bold"></select>
       </div>
 
-      <div class="space-y-1.5">
+      <!-- 第 2 行：今天 / 昨天 / 自訂日期（獨立一行，不超出邊界） -->
+      <div class="flex items-center gap-1.5 min-w-0 max-w-full">
+        <button type="button" id="qe-date-today" class="px-2.5 py-1.5 rounded-xl btn-primary text-xs font-bold shrink-0">今天</button>
+        <button type="button" id="qe-date-yest" class="px-2.5 py-1.5 rounded-xl btn-secondary text-xs font-bold shrink-0">昨天</button>
+        <input type="date" id="qe-date-inp" aria-label="選擇日期" class="qe-date-input">
+      </div>
+
+      <!-- 橫向捲動主類別與子類別 Chips（直接在主畫面點選，不用另外翻頁） -->
+      <div class="space-y-1.5 min-w-0">
         <div id="qe-main-chips" class="flex items-center gap-1.5 overflow-x-auto pb-0.5"></div>
         <div id="qe-sub-chips" class="flex items-center gap-1.5 overflow-x-auto pb-0.5"></div>
       </div>
 
+      <!-- 可選展開：專案、手續費、標籤、存為常用組合 -->
       <div id="qe-advanced-panel" class="hidden p-3 rounded-2xl bg-slate-800/40 border space-y-2">
         <div class="grid grid-cols-2 gap-2">
           <div><span class="text-slate-400">專案</span><select id="qe-proj-sel" aria-label="專案" class="w-full p-2 mt-1"></select></div>
@@ -806,6 +821,7 @@ function buildQuickEntryUI() {
         <button id="qe-save-combo-btn" class="w-full py-2 rounded-xl btn-secondary font-semibold">存為雲端常用組合</button>
       </div>
 
+      <!-- 底部拇指區：計算機鍵盤 -->
       <div class="grid grid-cols-4 gap-1.5 pt-0.5">
         ${["7","8","9","⌫","4","5","6","×","1","2","3","÷","C","0","+","-"].map(k => `
           <button type="button" data-key="${k}" class="qe-key-btn rounded-2xl">${esc(k)}</button>
@@ -852,8 +868,8 @@ function buildQuickEntryUI() {
   const syncDateChips = () => {
     const todayStr = formatIsoDate(new Date());
     const yestStr = formatIsoDate(new Date(Date.now() - 86400000));
-    btnToday.className = `px-2.5 py-2 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === todayStr ? "btn-primary" : "btn-secondary"}`;
-    btnYest.className = `px-2.5 py-2 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === yestStr ? "btn-primary" : "btn-secondary"}`;
+    btnToday.className = `px-2.5 py-1.5 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === todayStr ? "btn-primary" : "btn-secondary"}`;
+    btnYest.className = `px-2.5 py-1.5 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === yestStr ? "btn-primary" : "btn-secondary"}`;
   };
   btnToday.addEventListener("click", () => { dateInp.value = formatIsoDate(new Date()); syncDateChips(); });
   btnYest.addEventListener("click", () => { dateInp.value = formatIsoDate(new Date(Date.now() - 86400000)); syncDateChips(); });
@@ -935,8 +951,8 @@ function openQuickSheet(editTx, presetSeed) {
 
   const dateInp = document.getElementById("qe-date-inp");
   dateInp.value = normalizeDateForInput(editTx?.date);
-  document.getElementById("qe-date-today").className = `px-2.5 py-2 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === formatIsoDate(new Date()) ? "btn-primary" : "btn-secondary"}`;
-  document.getElementById("qe-date-yest").className = `px-2.5 py-2 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === formatIsoDate(new Date(Date.now() - 86400000)) ? "btn-primary" : "btn-secondary"}`;
+  document.getElementById("qe-date-today").className = `px-2.5 py-1.5 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === formatIsoDate(new Date()) ? "btn-primary" : "btn-secondary"}`;
+  document.getElementById("qe-date-yest").className = `px-2.5 py-1.5 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === formatIsoDate(new Date(Date.now() - 86400000)) ? "btn-primary" : "btn-secondary"}`;
 
   document.getElementById("qe-name-input").value = seed?.name || "";
   document.getElementById("qe-fee-inp").value = editTx?.fee || "";
