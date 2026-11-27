@@ -20,7 +20,7 @@ let stage3Booted = false;
 function bootStage3() {
   if (stage3Booted) return;
   const state = window.__FINANCE_APP__?.getState?.();
-  if (state && state.currentUser && document.getElementById("top-tools-drawer")) {
+  if (state && state.currentUser && document.getElementById("more-open-drafts")) {
     stage3Booted = true;
     initStage3(state.currentUser);
   }
@@ -31,50 +31,24 @@ window.addEventListener("finance:render", bootStage3);
 bootStage3();
 
 async function initStage3(user) {
-  injectDrawerButtons();
+  bindMoreButtons();
   injectStage3Modals();
   await loadNotifyRules(user.uid);
   startDraftsListener(user.uid);
   checkPeriodicBackupReminder();
 }
 
-function injectDrawerButtons() {
-  const drawer = document.getElementById("top-tools-drawer");
-  if (!drawer || document.getElementById("btn-open-drafts")) return;
-
-  const btnDraft = document.createElement("button");
-  btnDraft.id = "btn-open-drafts";
-  btnDraft.className = "p-2 rounded-xl btn-soft-dark flex items-center justify-center gap-1.5";
-  btnDraft.innerHTML = `<i data-lucide="bell" class="w-3.5 h-3.5 text-amber-400"></i><span>通知草稿</span><span id="draft-badge" class="hidden px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-bold">0</span>`;
-
-  const btnCsv = document.createElement("button");
-  btnCsv.id = "btn-open-csv";
-  btnCsv.className = "p-2 rounded-xl btn-soft-dark flex items-center justify-center gap-1.5";
-  btnCsv.innerHTML = `<i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-400"></i><span>MOZE CSV</span>`;
-
-  const btnCloseMonth = document.createElement("button");
-  btnCloseMonth.id = "btn-open-wizard";
-  btnCloseMonth.className = "p-2 rounded-xl btn-soft-dark flex items-center justify-center gap-1.5";
-  btnCloseMonth.innerHTML = `<i data-lucide="clipboard-check" class="w-3.5 h-3.5 text-purple-400"></i><span>月結確認</span>`;
-
-  drawer.insertBefore(btnCloseMonth, drawer.firstChild);
-  drawer.insertBefore(btnCsv, drawer.firstChild);
-  drawer.insertBefore(btnDraft, drawer.firstChild);
-  if (window.lucide) window.lucide.createIcons();
-
-  btnDraft.addEventListener("click", () => {
-    drawer.classList.add("hidden");
+function bindMoreButtons() {
+  document.getElementById("more-open-drafts")?.addEventListener("click", () => {
     renderDraftsModal();
     document.getElementById("drafts-modal").classList.remove("hidden");
     if (window.lucide) window.lucide.createIcons();
   });
-  btnCsv.addEventListener("click", () => {
-    drawer.classList.add("hidden");
+  document.getElementById("more-open-csv")?.addEventListener("click", () => {
     document.getElementById("csv-modal").classList.remove("hidden");
     if (window.lucide) window.lucide.createIcons();
   });
-  btnCloseMonth.addEventListener("click", () => {
-    drawer.classList.add("hidden");
+  document.getElementById("more-open-wizard")?.addEventListener("click", () => {
     openSettlementWizard();
   });
 }
@@ -96,8 +70,8 @@ function checkPeriodicBackupReminder() {
       <div class="text-slate-300">${lastIso ? `距上次匯出已過 ${daysPassed} 天` : "尚未匯出過 CSV 備份"}，可產出存至雲端硬碟。</div>
     </div>
     <div class="flex gap-1.5 shrink-0">
-      <button id="btn-do-periodic-backup" class="px-2.5 py-1.5 rounded-xl btn-soft-accent font-bold">立即產出</button>
-      <button id="btn-dismiss-backup" class="px-2 py-1.5 rounded-xl btn-soft-dark">稍後</button>
+      <button id="btn-do-periodic-backup" class="px-2.5 py-1.5 rounded-xl btn-primary font-bold">立即產出</button>
+      <button id="btn-dismiss-backup" class="px-2 py-1.5 rounded-xl btn-secondary">稍後</button>
     </div>
   `;
   ledgerSec.insertBefore(banner, ledgerSec.firstChild);
@@ -121,7 +95,7 @@ function injectStage3Modals() {
         <h3 class="text-base font-bold flex items-center gap-1.5"><i data-lucide="bell-ring" class="w-4 h-4 text-amber-400"></i> iOS 捷徑通知草稿箱</h3>
         <button aria-label="關閉視窗" onclick="document.getElementById('drafts-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
-      <div class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-slate-300">
+      <div class="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-slate-300">
         收到銀行/LINE Pay 通知後會即時出現在此。點擊草稿可標記<b>關鍵字</b>或<b>卡片帳戶</b>建立自動帶入規則，或直接連結既有紀錄避免重複。
       </div>
       <div id="drafts-list" class="space-y-2.5"></div>
@@ -143,7 +117,7 @@ function injectStage3Modals() {
       <div class="p-3 rounded-2xl bg-slate-800/50 border space-y-2">
         <div class="font-bold text-emerald-400">一、匯出標準 MOZE 4.0 格式 CSV</div>
         <p class="text-slate-400">產出標準 16 欄位 UTF-8 CSV 檔案，可自行存至 Google 雲端硬碟或 iCloud 檔案。</p>
-        <button id="btn-export-moze-csv" class="w-full py-2.5 rounded-xl btn-soft-dark font-bold">下載 MOZE 格式 CSV 備份</button>
+        <button id="btn-export-moze-csv" class="w-full py-2.5 rounded-xl btn-secondary font-bold">下載 MOZE 格式 CSV 備份</button>
       </div>
 
       <div class="p-3 rounded-2xl bg-slate-800/50 border space-y-2.5">
@@ -156,7 +130,7 @@ function injectStage3Modals() {
           <label class="flex items-center gap-2"><input type="checkbox" id="chk-csv-recalc-bal" checked> <span>依全部紀錄加總（含初始金額）更新當月帳戶餘額</span></label>
         </div>
         <div id="csv-preview-box" class="hidden p-2.5 rounded-xl bg-slate-900/60 border space-y-1.5"></div>
-        <button id="btn-run-csv-import" disabled class="w-full py-2.5 rounded-xl btn-soft-accent font-bold disabled:opacity-40">請先選擇 MOZE CSV 檔案</button>
+        <button id="btn-run-csv-import" disabled class="w-full py-2.5 rounded-xl btn-primary font-bold disabled:opacity-40">請先選擇 MOZE CSV 檔案</button>
       </div>
     </div>
   </div>
@@ -192,11 +166,13 @@ function startDraftsListener(uid) {
   unsubDrafts = onSnapshot(q, (snap) => {
     pendingDrafts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    const badge = document.getElementById("draft-badge");
+    const badge = document.getElementById("more-draft-badge");
+    const dot = document.getElementById("nav-draft-dot");
     if (badge) {
       badge.textContent = String(pendingDrafts.length);
       badge.classList.toggle("hidden", pendingDrafts.length === 0);
     }
+    if (dot) dot.classList.toggle("hidden", pendingDrafts.length === 0);
   });
 }
 
@@ -232,11 +208,11 @@ function renderDraftsModal() {
           <div class="font-medium text-slate-200 leading-relaxed">${escHtml(d.rawText)}</div>
           <span class="font-extrabold text-amber-400 shrink-0">NT$ ${Number(d.parsedAmount || 0).toLocaleString()}</span>
         </div>
-        <div class="text-[11px] text-slate-400 flex flex-wrap justify-between items-center gap-1">
+        <div class="text-xs text-slate-400 flex flex-wrap justify-between items-center gap-1">
           <span>${escHtml(d.parsedDate || "")} ${escHtml(d.parsedTime || "")} · 帶入：${escHtml(sug.account)} / ${escHtml(sug.mainCat)}-${escHtml(sug.subCat)}</span>
           <div class="flex gap-1.5">
-            <button data-did="${d.id}" class="btn-edit-draft px-2 py-0.5 rounded btn-soft-dark font-semibold">標記/入帳</button>
-            <button data-did="${d.id}" class="btn-del-draft px-2 py-0.5 rounded btn-soft-dark text-rose-300">刪除</button>
+            <button data-did="${d.id}" class="btn-edit-draft px-2.5 py-1 rounded btn-primary font-semibold">標記/入帳</button>
+            <button data-did="${d.id}" class="btn-del-draft px-2.5 py-1 rounded btn-secondary text-rose-400">刪除</button>
           </div>
         </div>
       </div>`;
@@ -252,7 +228,7 @@ function renderDraftsModal() {
   document.getElementById("rule-count").textContent = String(notifyRules.length);
   const rList = document.getElementById("notify-rules-list");
   rList.innerHTML = notifyRules.map((r, idx) => `
-    <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-800/40 text-[11px]">
+    <div class="flex justify-between items-center py-1 px-2 rounded bg-slate-800/40 text-xs">
       <span>關鍵字: <b>${escHtml(r.keyword || "無")}</b> | 卡片字樣: <b>${escHtml(r.accountMatch || "無")}</b> → ${escHtml(r.targetAccount)} (${escHtml(r.mainCat)}/${escHtml(r.subCat)})</span>
       <button data-ridx="${idx}" class="btn-del-rule text-rose-400">移除</button>
     </div>`).join("") || `<div class="text-slate-400">尚無規則，點擊上方草稿「標記/入帳」後會自動記住。</div>`;
@@ -279,8 +255,8 @@ function openDraftEditor(draftId) {
     <div class="font-bold text-cyan-400">標記通知文字並確認入帳</div>
     <div class="p-2 rounded-xl bg-slate-900/60 border text-slate-100 select-text leading-relaxed">${escHtml(draft.rawText)}</div>
     <div class="flex gap-1.5">
-      <button id="btn-pick-kw" class="px-2.5 py-1 rounded-lg btn-soft-dark">反白設為「關鍵字」</button>
-      <button id="btn-pick-acc" class="px-2.5 py-1 rounded-lg btn-soft-dark">反白設為「帳戶辨識」</button>
+      <button id="btn-pick-kw" class="px-2.5 py-1.5 rounded-lg btn-secondary">反白設為「關鍵字」</button>
+      <button id="btn-pick-acc" class="px-2.5 py-1.5 rounded-lg btn-secondary">反白設為「帳戶辨識」</button>
     </div>
     <div class="grid grid-cols-2 gap-2">
       <div><span class="text-slate-400">關鍵字</span><input type="text" id="ed-kw" value="${escHtml(sug.keyword)}" class="w-full p-1.5 mt-0.5"></div>
@@ -295,7 +271,7 @@ function openDraftEditor(draftId) {
       <div><span class="text-slate-400">主類別</span><select id="ed-main" class="w-full p-1.5 mt-0.5">${mains.map(m => `<option value="${escHtml(m)}" ${m === sug.mainCat ? "selected" : ""}>${escHtml(m)}</option>`).join("")}</select></div>
       <div><span class="text-slate-400">子類別</span><select id="ed-sub" class="w-full p-1.5 mt-0.5"></select></div>
     </div>
-    <button id="btn-confirm-draft-tx" class="w-full py-2 rounded-xl btn-soft-accent font-bold">確認新增記帳並記憶規則</button>
+    <button id="btn-confirm-draft-tx" class="w-full py-2.5 rounded-xl btn-primary font-bold">確認新增記帳並記憶規則</button>
     <div class="pt-2 border-t space-y-1.5">
       <div class="text-slate-400">已手動記過？連結既有紀錄消除草稿：</div>
       <div class="flex gap-1.5">
@@ -303,7 +279,7 @@ function openDraftEditor(draftId) {
           <option value="">選擇既有紀錄...</option>
           ${candidates.map(c => `<option value="${c.id}">${escHtml(c.date)} · ${escHtml(c.name || c.subCat)} · $${Math.abs(c.amount)} (${escHtml(c.account)})</option>`).join("")}
         </select>
-        <button id="btn-link-draft-tx" class="px-3 py-1.5 rounded-xl btn-soft-dark font-semibold">連結消除</button>
+        <button id="btn-link-draft-tx" class="px-3 py-1.5 rounded-xl btn-secondary font-semibold">連結消除</button>
       </div>
     </div>
   `;
@@ -437,7 +413,7 @@ function bindCsvEvents() {
 
     const box = document.getElementById("csv-preview-box");
     box.classList.remove("hidden");
-    box.innerHTML = `<div class="font-bold">解析完成：共 ${parsedCsvRecords.length} 筆，涵蓋 ${Object.keys(accBalances).length} 個帳戶</div><div class="max-h-28 overflow-y-auto text-[11px] text-slate-400 space-y-0.5">${Object.entries(accBalances).map(([k, v]) => `<div>• ${escHtml(k)}：累計 <b>${Math.round(v).toLocaleString()}</b></div>`).join("")}</div>`;
+    box.innerHTML = `<div class="font-bold">解析完成：共 ${parsedCsvRecords.length} 筆，涵蓋 ${Object.keys(accBalances).length} 個帳戶</div><div class="max-h-28 overflow-y-auto text-xs text-slate-400 space-y-0.5">${Object.entries(accBalances).map(([k, v]) => `<div>• ${escHtml(k)}：累計 <b>${Math.round(v).toLocaleString()}</b></div>`).join("")}</div>`;
     const btn = document.getElementById("btn-run-csv-import");
     btn.disabled = parsedCsvRecords.length === 0;
     btn.textContent = `開始匯入 (${parsedCsvRecords.length} 筆)`;
@@ -525,7 +501,7 @@ function openSettlementWizard() {
         <div class="flex items-end"><label class="flex items-center gap-1.5 pb-1.5"><input type="checkbox" id="wiz-gen-tx" checked> <span>產生本月固定流水（防重複）</span></label></div>
       </div>
     </div>
-    <button id="btn-run-wizard" class="w-full py-3 rounded-2xl btn-soft-accent font-bold">確認完成 ${escHtml(monthStr)} 月結</button>
+    <button id="btn-run-wizard" class="w-full py-3 rounded-2xl btn-primary font-bold">確認完成 ${escHtml(monthStr)} 月結</button>
   `;
   document.getElementById("wizard-modal").classList.remove("hidden");
 

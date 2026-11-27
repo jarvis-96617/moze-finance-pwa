@@ -8,24 +8,32 @@ const app = getApps()[0];
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const PRESET_COMBOS_KEY = "mozePresetCombosV1";
 const LAST_CAT_ACC_KEY = "mozeLastCatAccV1";
+const RECENT_CATS_KEY = "mozeRecentCatsV1";
 
 let calcExpr = "";
 let currentType = "支出";
 let selectedMainCat = "";
 let selectedSubCat = "";
-let tierLevel = 1;
 let editingTxSnapshot = null;
 let fanOpen = false;
 let qeBooted = false;
+let activeTypeFilter = "ALL";
+let searchQuery = "";
+let recentCats = [];
+let lastCatAccMap = {};
 
-let presets = [
+const DEFAULT_PRESETS = [
   { label: "早餐 55", type: "支出", amount: 55, mainCat: "飲食", subCat: "早餐", account: "現金", name: "早餐" },
   { label: "午餐 120", type: "支出", amount: 120, mainCat: "飲食", subCat: "午餐", account: "現金", name: "午餐" },
   { label: "微糖純茶 45", type: "支出", amount: 45, mainCat: "飲食", subCat: "飲料/點心", account: "現金", name: "微糖純茶" }
 ];
-let lastCatAccMap = {};
+
+const CAT_COLORS = {
+  "飲食": "#f97316", "交通": "#0ea5e9", "購物": "#ec4899", "娛樂": "#8b5cf6",
+  "個人": "#14b8a6", "醫療": "#ef4444", "家居": "#6366f1", "家庭": "#f59e0b",
+  "生活": "#10b981", "學習": "#3b82f6", "貓咪": "#f43f5e", "其他": "#64748b"
+};
 
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({
@@ -47,20 +55,57 @@ function detectCurrencyByAccount(accName = "") {
   return "TWD";
 }
 
+function evaluateSafeMath(expr) {
+  const cleaned = String(expr || "").replace(/×/g, "*").replace(/÷/g, "/").replace(/\s+/g, "");
+  if (!cleaned || !/^[0-9+\-*/.]+$/.test(cleaned)) return NaN;
+  const tokens = cleaned.match(/(\d+(?:\.\d+)?|[+\-*/])/g);
+  if (!tokens) return NaN;
+
+  const stack = [];
+  let op = "+";
+  for (let i = 0; i < tokens.length; i++) {
+    const tk = tokens[i];
+    if (/^[+\-*/]$/.test(tk)) {
+      op = tk;
+    } else {
+      const num = parseFloat(tk);
+      if (isNaN(num)) return NaN;
+      if (op === "+") stack.push(num);
+      else if (op === "-") stack.push(-num);
+      else if (op === "*") stack.push((stack.pop() ?? 0) * num);
+      else if (op === "/") stack.push(num === 0 ? 0 : (stack.pop() ?? 0) / num);
+    }
+  }
+  return stack.reduce((a, b) => a + b, 0);
+}
+
+function getSmartMealSeed() {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 10) return { mainCat: "飲食", subCat: "早餐", name: "早餐", amount: 55 };
+  if (h >= 11 && h < 14) return { mainCat: "飲食", subCat: "午餐", name: "午餐", amount: 120 };
+  if (h >= 17 && h < 21) return { mainCat: "飲食", subCat: "晚餐", name: "晚餐", amount: 150 };
+  return null;
+}
+
 function loadLocalMeta() {
-  try {
-    const p = JSON.parse(localStorage.getItem(PRESET_COMBOS_KEY) || "null");
-    if (Array.isArray(p) && p.length) presets = p;
-  } catch (e) {}
   try {
     const m = JSON.parse(localStorage.getItem(LAST_CAT_ACC_KEY) || "{}");
     if (m && typeof m === "object") lastCatAccMap = m;
   } catch (e) {}
+  try {
+    const r = JSON.parse(localStorage.getItem(RECENT_CATS_KEY) || "[]");
+    if (Array.isArray(r)) recentCats = r;
+  } catch (e) {}
 }
 
 function saveLocalMeta() {
-  try { localStorage.setItem(PRESET_COMBOS_KEY, JSON.stringify(presets)); } catch (e) {}
   try { localStorage.setItem(LAST_CAT_ACC_KEY, JSON.stringify(lastCatAccMap)); } catch (e) {}
+  try { localStorage.setItem(RECENT_CATS_KEY, JSON.stringify(recentCats)); } catch (e) {}
+}
+
+function getPresetsList() {
+  const st = window.__FINANCE_APP__?.getState?.();
+  return (st?.presetCombos && st.presetCombos.length) ? st.presetCombos : DEFAULT_PRESETS;
 }
 
 function injectEnhancedStyles() {
@@ -69,84 +114,72 @@ function injectEnhancedStyles() {
   style.id = "qe-enhanced-style";
   style.textContent = `
     #qe-center-fan-btn {
-      width: 42px; height: 36px; border-radius: 14px;
+      width: 48px; height: 42px; border-radius: 16px;
       display: inline-flex; align-items: center; justify-content: center;
-      background: var(--soft-dark-btn); color: #f8fafc;
-      border: 1px solid var(--soft-dark-border);
-      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
-      transition: transform .18s ease, background .18s ease;
+      background: var(--soft-dark-accent); color: #f8fafc;
+      border: 1px solid rgba(125, 211, 252, 0.35);
+      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.24);
+      transition: transform .18s ease;
       flex-shrink: 0;
     }
-    #qe-center-fan-btn:active { transform: scale(.92); }
-    #qe-center-fan-btn.active { background: var(--soft-dark-accent); transform: rotate(45deg); }
+    #qe-center-fan-btn.active { transform: rotate(45deg); }
 
     #qe-fan-backdrop {
       position: fixed; inset: 0; z-index: 38;
-      background: rgba(15, 23, 42, 0.22);
-      backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-      opacity: 0; pointer-events: none; transition: opacity .2s ease;
+      background: rgba(15, 23, 42, 0.24);
+      opacity: 0; pointer-events: none; transition: opacity .18s ease;
     }
     #qe-fan-backdrop.open { opacity: 1; pointer-events: auto; }
 
     #qe-fan-layer {
-      position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 34px);
+      position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 42px);
       width: 0; height: 0; z-index: 42; pointer-events: none;
     }
     .qe-fan-node {
-      position: absolute; left: 0; top: 0; padding: 7px 12px; border-radius: 999px;
+      position: absolute; left: 0; top: 0; padding: 8px 13px; border-radius: 999px;
       display: inline-flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 800; line-height: 1.1; color: #f8fafc;
+      font-size: 13px; font-weight: 800; line-height: 1.1; color: #f8fafc;
       background: linear-gradient(135deg, #2b384e, #3b4d6b);
       border: 1px solid rgba(148, 163, 184, 0.45);
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.30);
       opacity: 0; pointer-events: none; white-space: nowrap;
       transform: translate(-50%, -50%) scale(0.5);
-      transition: transform .24s cubic-bezier(.18, .9, .28, 1.12), opacity .16s ease;
+      transition: transform .22s cubic-bezier(.18, .9, .28, 1.12), opacity .15s ease;
     }
     #qe-fan-layer.open .qe-fan-node {
       opacity: 1; pointer-events: auto;
       transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy))) scale(1);
     }
-    .qe-fan-node.is-xfer { background: var(--soft-dark-accent); border-color: rgba(125, 211, 252, 0.5); }
-
-    #qe-fan-grid-fallback {
-      position: fixed; left: 14px; right: 14px;
-      bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
-      max-width: 420px; margin: 0 auto; z-index: 42; display: none;
-      flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px;
-      border-radius: 22px; background: var(--glass-strong);
-      border: 1px solid var(--card-border); box-shadow: var(--shadow);
-    }
-    #qe-fan-grid-fallback.open { display: flex; }
+    .qe-fan-node.is-more { background: var(--soft-dark-accent); }
 
     .qe-sheet {
       background-color: var(--glass-strong);
-      -webkit-backdrop-filter: blur(42px) saturate(180%); backdrop-filter: blur(42px) saturate(180%);
+      -webkit-backdrop-filter: blur(36px) saturate(180%); backdrop-filter: blur(36px) saturate(180%);
       border: 1px solid var(--card-border);
       border-radius: 1.85rem 1.85rem 0 0;
-      animation: qeUp .26s cubic-bezier(.2,.9,.25,1);
+      animation: qeUp .24s cubic-bezier(.2,.9,.25,1);
       padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
     }
     @media (min-width: 640px) { .qe-sheet { border-radius: 1.85rem; } }
     @keyframes qeUp { from { transform: translateY(32px); opacity: 0; } to { transform: none; opacity: 1; } }
 
     .qe-key-btn {
-      background-color: #e6eae6; color: #1e293b;
-      border: 1px solid rgba(30,41,59,.14);
-      font-weight: 800; font-size: 16px;
-      transition: transform .1s ease, background-color .12s ease;
+      background-color: var(--btn-sec-bg); color: var(--ink);
+      border: 1px solid var(--btn-sec-border);
+      font-weight: 800; font-size: 17px; min-height: 46px;
     }
-    :root[data-theme="dark"] .qe-key-btn {
-      background-color: #2f3d54; color: #f8fafc; border: 1px solid rgba(148,163,184,.28);
-    }
-    .qe-key-btn:active { transform: scale(.94); background-color: #cbd5e1; }
-    :root[data-theme="dark"] .qe-key-btn:active { background-color: #475b7a; }
 
-    .swipe-row-wrap { position: relative; overflow: hidden; border-radius: 14px; margin: 5px 0; }
+    .date-group-header {
+      position: sticky; top: 56px; z-index: 15;
+      background-color: var(--header-bg);
+      -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+    }
+
+    .swipe-row-wrap { position: relative; overflow: hidden; border-radius: 16px; }
     .swipe-action-bg {
       position: absolute; inset: 0; z-index: 1;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 14px; font-size: 12px; font-weight: 800;
+      padding: 0 16px; font-size: 13px; font-weight: 800;
       opacity: 0; transition: opacity .15s ease;
       background: linear-gradient(90deg, rgba(56,189,248,.18), rgba(251,113,133,.20));
     }
@@ -154,7 +187,7 @@ function injectEnhancedStyles() {
     .swipe-row-content {
       position: relative; z-index: 2;
       background-color: var(--glass-flat); border: 1px solid var(--line);
-      border-radius: 14px; transition: transform .18s ease; touch-action: pan-y;
+      border-radius: 16px; transition: transform .18s ease; touch-action: pan-y;
     }
   `;
   document.head.appendChild(style);
@@ -248,27 +281,33 @@ function patchLedgerAndBalances() {
     .slice()
     .sort((a, b) => txToTimestamp(b) - txToTimestamp(a));
 
-  const typeFilter = document.getElementById("filter-tx-type")?.value || "ALL";
-  let filtered = sourceList.filter(tx => {
-    if (typeFilter !== "ALL" && tx.type !== typeFilter) return false;
-    if (!targetYm) return true;
-    return parseYmKeyFromDateStr(tx.date) === targetYm;
-  });
-  if (!filtered.length && sourceList.length && typeFilter === "ALL") {
-    filtered = sourceList.slice(0, 30);
-  }
+  const kw = searchQuery.trim().toLowerCase();
+  const monthAll = sourceList.filter(tx => !targetYm || parseYmKeyFromDateStr(tx.date) === targetYm);
 
   let expSum = 0, incSum = 0;
-  filtered.forEach(tx => {
+  monthAll.forEach(tx => {
     const amt = Math.abs(Number(tx.amount || 0));
     if (tx.type === "支出" || tx.type === "應付款項") expSum += amt;
     if (tx.type === "收入" || tx.type === "退款") incSum += amt;
   });
 
-  const sumEl = document.getElementById("txt-month-summary");
-  if (sumEl) {
-    sumEl.textContent = `支出 NT$ ${Math.round(expSum).toLocaleString()} · 收入 NT$ ${Math.round(incSum).toLocaleString()}`;
+  const expEl = document.getElementById("txt-month-expense");
+  const incEl = document.getElementById("txt-month-income");
+  const netEl = document.getElementById("txt-month-net");
+  if (expEl) expEl.textContent = `NT$ ${Math.round(expSum).toLocaleString()}`;
+  if (incEl) incEl.textContent = `NT$ ${Math.round(incSum).toLocaleString()}`;
+  if (netEl) {
+    const net = Math.round(incSum - expSum);
+    netEl.textContent = `${net >= 0 ? "+" : ""}NT$ ${net.toLocaleString()}`;
   }
+
+  const filtered = monthAll.filter(tx => {
+    if (activeTypeFilter !== "ALL" && tx.type !== activeTypeFilter) return false;
+    if (!kw) return true;
+    const hay = `${tx.name || ""} ${tx.mainCat || ""} ${tx.subCat || ""} ${tx.merchant || ""} ${tx.account || ""} ${tx.tags || ""}`.toLowerCase();
+    return hay.includes(kw);
+  });
+
   const cntEl = document.getElementById("txt-tx-count");
   if (cntEl) cntEl.textContent = `${filtered.length} 筆`;
 
@@ -276,65 +315,102 @@ function patchLedgerAndBalances() {
   if (listEl) {
     listEl.innerHTML = "";
     if (!filtered.length) {
-      listEl.innerHTML = `<div class="text-xs text-slate-400 py-6 text-center">尚無記帳紀錄，點選底部中央「＋」扇形選單或右上角「記帳」。</div>`;
+      listEl.innerHTML = `<div class="glass-card text-sm text-slate-400 py-8 text-center">本月尚無符合條件的記帳紀錄<br><span class="text-xs">點選底部中央「＋」立即記一筆</span></div>`;
     } else {
+      const groups = new Map();
       filtered.forEach(tx => {
-        const isOut = (tx.type === "支出" || tx.type === "轉出" || tx.type === "應付款項");
-        const isXfer = (tx.type === "轉帳" || tx.type === "轉出" || tx.type === "轉入");
-        const sign = isXfer ? "" : (isOut ? "-" : "+");
-        const colorCls = isXfer ? "text-cyan-400" : (isOut ? "text-rose-400" : "text-emerald-400");
+        const dKey = String(tx.date || "未指定日期").replace(/\//g, "-");
+        if (!groups.has(dKey)) groups.set(dKey, []);
+        groups.get(dKey).push(tx);
+      });
 
-        const wrap = document.createElement("div");
-        wrap.className = "swipe-row-wrap";
-        wrap.innerHTML = `
-          <div class="swipe-action-bg">
-            <span class="text-cyan-400">← 編輯</span>
-            <span class="text-rose-400">刪除 →</span>
-          </div>
-          <div class="swipe-row-content p-2.5 flex justify-between items-center gap-2 text-xs">
-            <div class="min-w-0 flex-1">
-              <div class="font-bold truncate">${esc(tx.name || tx.subCat || tx.mainCat || tx.type)} <span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">${esc(tx.mainCat || "")}${tx.subCat ? "·" + esc(tx.subCat) : ""}</span></div>
-              <div class="text-[11px] text-slate-400 truncate mt-0.5">${esc(tx.date || "")} ${esc(tx.time || "")} · ${esc(tx.account || "")}${tx.toAccount ? " → " + esc(tx.toAccount) : ""}${tx.project ? " · #" + esc(tx.project) : ""}${isShared && tx.payerLabel ? " · 付:" + esc(tx.payerLabel) : ""}</div>
-            </div>
-            <div class="font-extrabold whitespace-nowrap shrink-0 ${colorCls}">${sign}${esc(tx.currency || "TWD")} ${Math.abs(Number(tx.amount || 0)).toLocaleString()}</div>
+      groups.forEach((items, dKey) => {
+        let dayExp = 0;
+        items.forEach(t => {
+          if (t.type === "支出" || t.type === "應付款項") dayExp += Math.abs(Number(t.amount || 0));
+        });
+
+        const grpWrap = document.createElement("div");
+        grpWrap.className = "space-y-1.5";
+        grpWrap.innerHTML = `
+          <div class="date-group-header flex justify-between items-center px-2 py-1 rounded-xl text-xs font-bold text-slate-400">
+            <span>${esc(dKey)}</span>
+            <span>日支出 NT$ ${Math.round(dayExp).toLocaleString()}</span>
           </div>`;
 
-        const content = wrap.querySelector(".swipe-row-content");
-        let startX = 0, startY = 0, curDx = 0, lockedAxis = null;
-        content.addEventListener("touchstart", (e) => {
-          startX = e.touches[0].clientX;
-          startY = e.touches[0].clientY;
-          curDx = 0;
-          lockedAxis = null;
-        }, { passive: true });
-        content.addEventListener("touchmove", (e) => {
-          const dx = e.touches[0].clientX - startX;
-          const dy = e.touches[0].clientY - startY;
-          if (!lockedAxis && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
-            lockedAxis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-          }
-          if (lockedAxis === "x") {
-            curDx = dx;
-            wrap.classList.add("swiping");
-            content.style.transform = `translateX(${Math.max(-76, Math.min(76, curDx))}px)`;
-          }
-        }, { passive: true });
-        content.addEventListener("touchend", async () => {
-          content.style.transform = "";
-          wrap.classList.remove("swiping");
-          if (lockedAxis === "x" && curDx < -55) {
-            const uid = auth.currentUser.uid;
-            if (isShared) await deleteDoc(doc(db, "sharedBooks", state.activeBookId, "transactions", tx.id));
-            else await deleteDoc(doc(db, "users", uid, "transactions", tx.id));
-            window.showToast("已刪除紀錄");
-          } else if (lockedAxis === "x" && curDx > 55) {
-            openQuickSheet(tx, null);
-          }
-          curDx = 0;
-          lockedAxis = null;
+        items.forEach(tx => {
+          const isOut = (tx.type === "支出" || tx.type === "轉出" || tx.type === "應付款項");
+          const isXfer = (tx.type === "轉帳" || tx.type === "轉出" || tx.type === "轉入");
+          const sign = isXfer ? "" : (isOut ? "-" : "+");
+          const colorCls = isXfer ? "text-cyan-400" : (isOut ? "text-rose-400" : "text-emerald-400");
+          const dotColor = CAT_COLORS[tx.mainCat] || "#64748b";
+          const initialChar = (tx.mainCat || tx.type || "帳").slice(0, 1);
+
+          const wrap = document.createElement("div");
+          wrap.className = "swipe-row-wrap";
+          wrap.innerHTML = `
+            <div class="swipe-action-bg">
+              <span class="text-cyan-400">→ 編輯</span>
+              <span class="text-rose-400">刪除 ←</span>
+            </div>
+            <div class="swipe-row-content p-3 flex justify-between items-center gap-2.5">
+              <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-extrabold text-sm shrink-0" style="background-color:${dotColor}">
+                ${esc(initialChar)}
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="text-[15px] font-bold truncate">${esc(tx.name || tx.subCat || tx.mainCat || tx.type)}</div>
+                <div class="text-xs text-slate-400 truncate mt-0.5">${esc(tx.mainCat || "")}${tx.subCat ? " · " + esc(tx.subCat) : ""} · ${esc(tx.account || "")}${tx.toAccount ? " → " + esc(tx.toAccount) : ""}${tx.project ? " · #" + esc(tx.project) : ""}</div>
+              </div>
+              <div class="text-[15px] font-extrabold whitespace-nowrap shrink-0 ${colorCls}">${sign}${esc(tx.currency || "TWD")} ${Math.abs(Number(tx.amount || 0)).toLocaleString()}</div>
+            </div>`;
+
+          const content = wrap.querySelector(".swipe-row-content");
+          let startX = 0, startY = 0, curDx = 0, lockedAxis = null;
+          content.addEventListener("touchstart", (e) => {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            curDx = 0;
+            lockedAxis = null;
+          }, { passive: true });
+          content.addEventListener("touchmove", (e) => {
+            const dx = e.touches[0].clientX - startX;
+            const dy = e.touches[0].clientY - startY;
+            if (!lockedAxis && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+              lockedAxis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+            }
+            if (lockedAxis === "x") {
+              curDx = dx;
+              wrap.classList.add("swiping");
+              content.style.transform = `translateX(${Math.max(-80, Math.min(80, curDx))}px)`;
+            }
+          }, { passive: true });
+          content.addEventListener("touchend", async () => {
+            content.style.transform = "";
+            wrap.classList.remove("swiping");
+            if (lockedAxis === "x" && curDx < -55) {
+              const backupCopy = { ...tx };
+              delete backupCopy.id;
+              const uid = auth.currentUser.uid;
+              const bookId = state.activeBookId;
+              if (isShared) await deleteDoc(doc(db, "sharedBooks", bookId, "transactions", tx.id));
+              else await deleteDoc(doc(db, "users", uid, "transactions", tx.id));
+
+              window.showToast("已刪除紀錄", false, async () => {
+                if (isShared) await addDoc(collection(db, "sharedBooks", bookId, "transactions"), backupCopy);
+                else await addDoc(collection(db, "users", uid, "transactions"), backupCopy);
+                window.showToast("已復原紀錄");
+              });
+            } else if (lockedAxis === "x" && curDx > 55) {
+              openQuickSheet(tx, null);
+            }
+            curDx = 0;
+            lockedAxis = null;
+          });
+          content.addEventListener("click", () => openQuickSheet(tx, null));
+          grpWrap.appendChild(wrap);
         });
-        content.addEventListener("dblclick", () => openQuickSheet(tx, null));
-        listEl.appendChild(wrap);
+
+        listEl.appendChild(grpWrap);
       });
     }
   }
@@ -375,19 +451,27 @@ function patchLedgerAndBalances() {
     const mktEl = document.getElementById("txt-net-worth-market");
     const costEl = document.getElementById("txt-net-worth-cost");
     const secMktEl = document.getElementById("txt-sec-market-val");
+    const secCostEl = document.getElementById("txt-sec-cost-val");
+    const secPlEl = document.getElementById("txt-sec-pl");
     if (mktEl) mktEl.textContent = "NT$ " + Math.round(nonSec + secMkt).toLocaleString();
     if (costEl) costEl.textContent = "NT$ " + Math.round(nonSec + secCost).toLocaleString();
     if (secMktEl) secMktEl.textContent = "$" + Math.round(secMkt).toLocaleString();
+    if (secCostEl) secCostEl.textContent = "$" + Math.round(secCost).toLocaleString();
+    if (secPlEl) {
+      const pl = Math.round(secMkt - secCost);
+      secPlEl.textContent = `${pl >= 0 ? "+" : ""}$${pl.toLocaleString()}`;
+      secPlEl.className = `font-bold mt-0.5 ${pl >= 0 ? "text-emerald-400" : "text-rose-400"}`;
+    }
 
     for (const [cName, items] of Object.entries(cats)) {
       const card = document.createElement("div");
-      card.className = "glass-card p-3 space-y-1.5 text-xs";
+      card.className = "glass-card p-3.5 space-y-1.5 text-sm";
       const sub = items.reduce((sum, x) => sum + x.twdVal, 0);
-      card.innerHTML = `<div class="flex justify-between text-slate-400 font-bold mb-1"><span>${esc(cName)}</span><span>NT$ ${Math.round(sub).toLocaleString()}</span></div>`;
+      card.innerHTML = `<div class="flex justify-between text-xs text-slate-400 font-bold mb-1"><span>${esc(cName)}</span><span>NT$ ${Math.round(sub).toLocaleString()}</span></div>`;
       items.forEach(it => {
         card.innerHTML += `
-          <div class="flex justify-between items-center py-1 border-b last:border-0">
-            <div class="flex items-center gap-1.5"><span>${esc(it.name)}</span><span class="cur-chip cur-${it.fx.cur}">${it.fx.cur}</span></div>
+          <div class="flex justify-between items-center py-1.5 border-b last:border-0">
+            <div class="flex items-center gap-1.5"><span class="text-[15px] font-medium">${esc(it.name)}</span><span class="cur-chip cur-${it.fx.cur}">${it.fx.cur}</span></div>
             <div class="font-bold whitespace-nowrap ${it.val < 0 ? "text-rose-400" : ""}">${it.fx.sym} ${Math.round(it.val).toLocaleString()}</div>
           </div>`;
       });
@@ -413,10 +497,131 @@ function patchLedgerAndBalances() {
       const need = Math.max(0, cDue - bBal);
       gapEl.innerHTML += `
         <div class="p-3 rounded-2xl border ${need > 0 ? "bg-rose-500/10 border-rose-500/30" : "bg-slate-800/40"} text-xs space-y-1">
-          <div class="flex justify-between font-bold"><span>${esc(m.cardName)}</span><span class="${need > 0 ? "text-rose-400" : "text-emerald-400"}">${need > 0 ? "需補 NT$ " + Math.round(need).toLocaleString() : "餘額充足"}</span></div>
+          <div class="flex justify-between font-bold text-sm"><span>${esc(m.cardName)}</span><span class="${need > 0 ? "text-rose-400" : "text-emerald-400"}">${need > 0 ? "需補 NT$ " + Math.round(need).toLocaleString() : "餘額充足"}</span></div>
           <div class="flex justify-between text-slate-400"><span>扣款戶：${esc(m.bankName)} ($${Math.round(bBal).toLocaleString()})</span><span>應繳：$${Math.round(cDue).toLocaleString()}</span></div>
         </div>`;
     });
+  }
+
+  renderStatisticsCharts(state, monthAll, mIdx);
+}
+
+function renderStatisticsCharts(state, monthAll, mIdx) {
+  const donutBox = document.getElementById("chart-category-donut");
+  const barsBox = document.getElementById("chart-monthly-bars");
+  const lineBox = document.getElementById("chart-networth-line");
+  if (!donutBox || !barsBox || !lineBox) return;
+
+  const catTotals = {};
+  let totalExp = 0;
+  monthAll.forEach(tx => {
+    if (tx.type !== "支出" && tx.type !== "應付款項") return;
+    const amt = Math.abs(Number(tx.amount || 0));
+    const cat = tx.mainCat || "其他";
+    catTotals[cat] = (catTotals[cat] || 0) + amt;
+    totalExp += amt;
+  });
+
+  document.getElementById("stats-cat-total").textContent = `NT$ ${Math.round(totalExp).toLocaleString()}`;
+  const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+
+  if (!sortedCats.length || totalExp <= 0) {
+    donutBox.innerHTML = `<div class="text-xs text-slate-400 py-4 text-center w-full">本月尚無支出資料</div>`;
+  } else {
+    const r = 46, cx = 60, cy = 60, circ = 2 * Math.PI * r;
+    let offset = 0;
+    const segs = sortedCats.map(([cat, val]) => {
+      const pct = val / totalExp;
+      const dash = pct * circ;
+      const color = CAT_COLORS[cat] || "#64748b";
+      const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="transparent" stroke="${color}" stroke-width="16" stroke-dasharray="${dash.toFixed(2)} ${circ.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})" />`;
+      offset += dash;
+      return seg;
+    }).join("");
+
+    const legend = sortedCats.slice(0, 6).map(([cat, val]) => {
+      const pct = Math.round((val / totalExp) * 100);
+      const color = CAT_COLORS[cat] || "#64748b";
+      return `<div class="flex items-center justify-between text-xs py-0.5">
+        <span class="flex items-center gap-1.5 font-semibold"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:${color}"></span>${esc(cat)}</span>
+        <span class="text-slate-400 font-bold">${pct}% ($${Math.round(val).toLocaleString()})</span>
+      </div>`;
+    }).join("");
+
+    donutBox.innerHTML = `
+      <svg width="120" height="120" viewBox="0 0 120 120" class="shrink-0">${segs}</svg>
+      <div class="flex-1 w-full space-y-1">${legend}</div>`;
+  }
+
+  const months = state.globalData?.assets?.months || [];
+  const sliceStart = Math.max(0, months.length - 6);
+  const recentMonths = months.slice(sliceStart);
+  const isShared = state.activeBookId !== "personal";
+  const allTx = isShared ? state.sharedTx : state.personalTx;
+
+  const series = recentMonths.map(mLabel => {
+    const ym = parseYmKeyFromLabel(mLabel);
+    let exp = 0, inc = 0;
+    allTx.forEach(t => {
+      if (parseYmKeyFromDateStr(t.date) !== ym) return;
+      const a = Math.abs(Number(t.amount || 0));
+      if (t.type === "支出" || t.type === "應付款項") exp += a;
+      if (t.type === "收入" || t.type === "退款") inc += a;
+    });
+    return { label: mLabel, exp, inc };
+  });
+
+  const maxBar = Math.max(1, ...series.flatMap(s => [s.exp, s.inc]));
+  barsBox.innerHTML = `<div class="grid grid-cols-${Math.max(1, series.length)} gap-2 items-end h-32 pt-4">
+    ${series.map(s => {
+      const expH = Math.max(4, Math.round((s.exp / maxBar) * 84));
+      const incH = Math.max(4, Math.round((s.inc / maxBar) * 84));
+      return `<div class="flex flex-col items-center gap-1">
+        <div class="flex items-end gap-1 h-24">
+          <div class="w-3 rounded-t bg-rose-400" style="height:${expH}px" title="支出 $${Math.round(s.exp).toLocaleString()}"></div>
+          <div class="w-3 rounded-t bg-emerald-400" style="height:${incH}px" title="收入 $${Math.round(s.inc).toLocaleString()}"></div>
+        </div>
+        <span class="text-xs text-slate-400 font-semibold">${esc(s.label)}</span>
+      </div>`;
+    }).join("")}
+  </div>`;
+
+  const accs = state.globalData?.assets?.accounts || [];
+  const nwSeries = recentMonths.map((mLabel, idx) => {
+    const realIdx = sliceStart + idx;
+    let sum = 0;
+    accs.forEach(a => {
+      if ((state.hiddenAccounts || []).includes(a.name)) return;
+      if (["股票代號", "股票名", "現值"].includes(a.name) || a.name.includes(".TW")) return;
+      if (a.name === "國泰嚕哪基金" || a.name === "彰化銀行(房貸)") return;
+      sum += Number(a.values?.[realIdx] || 0);
+    });
+    return { label: mLabel, val: sum };
+  });
+
+  const latestNw = nwSeries[nwSeries.length - 1]?.val || 0;
+  document.getElementById("stats-nw-latest").textContent = `NT$ ${Math.round(latestNw).toLocaleString()}`;
+
+  if (nwSeries.length < 2) {
+    lineBox.innerHTML = `<div class="text-xs text-slate-400 py-3 text-center">累積 2 個月以上資產快照後顯示走勢線</div>`;
+  } else {
+    const vals = nwSeries.map(d => d.val);
+    const minV = Math.min(...vals), maxV = Math.max(...vals);
+    const span = Math.max(1, maxV - minV);
+    const w = 300, h = 80, pad = 12;
+    const pts = nwSeries.map((d, i) => {
+      const x = pad + (i * (w - pad * 2)) / (nwSeries.length - 1);
+      const y = h - pad - ((d.val - minV) / span) * (h - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(" ");
+    lineBox.innerHTML = `
+      <svg viewBox="0 0 ${w} ${h}" class="w-full h-24 overflow-visible">
+        <polyline fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${pts}" />
+      </svg>
+      <div class="flex justify-between text-xs text-slate-400 font-semibold">
+        <span>${esc(nwSeries[0].label)}</span>
+        <span>${esc(nwSeries[nwSeries.length - 1].label)}</span>
+      </div>`;
   }
 }
 
@@ -430,113 +635,54 @@ function getAccountList() {
   return accs;
 }
 
-function getFanDynamicItems() {
+function getTopFanItems() {
   const state = window.__FINANCE_APP__.getState();
-  const cats = state.categories || {};
-  const mainNames = Object.keys(cats);
-  const items = mainNames.map(m => ({
+  const cats = Object.keys(state.categories || {});
+  const ordered = [...new Set([...recentCats, ...cats])].filter(c => cats.includes(c));
+  const top5 = ordered.slice(0, 5).map(m => ({
     label: m,
     type: "支出",
     mainCat: m,
-    subCat: (cats[m] && cats[m][0]) || "一般"
+    subCat: (state.categories[m]?.[0]) || "一般"
   }));
-  items.push({
-    label: "轉帳",
-    type: "轉帳",
-    mainCat: "其他",
-    subCat: "轉帳/調整",
-    isXfer: true
-  });
-  return items;
-}
-
-function renderAdaptiveFanNodes() {
-  const fanLayer = document.getElementById("qe-fan-layer");
-  const fallbackGrid = document.getElementById("qe-fan-grid-fallback");
-  if (!fanLayer || !fallbackGrid) return;
-
-  const items = getFanDynamicItems();
-  const vw = Math.min(window.innerWidth || 393, 440);
-  const maxHalfSpan = Math.max(115, (vw / 2) - 42);
-
-  fanLayer.innerHTML = "";
-  fallbackGrid.innerHTML = "";
-
-  if (items.length > 13) {
-    fanLayer.dataset.mode = "grid";
-    items.forEach((it) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = `px-3 py-2 rounded-full text-xs font-extrabold text-slate-50 border ${it.isXfer ? "btn-soft-accent" : "btn-soft-dark"}`;
-      btn.textContent = it.label;
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeFanMenu();
-        openQuickSheet(null, it);
-      });
-      fallbackGrid.appendChild(btn);
-    });
-    return;
-  }
-
-  fanLayer.dataset.mode = "arc";
-  const rings = [];
-  if (items.length <= 5) {
-    rings.push({ list: items, radius: Math.min(126, maxHalfSpan * 0.96), startDeg: -158, endDeg: -22 });
-  } else {
-    const innerCount = Math.min(5, Math.ceil(items.length * 0.42));
-    const innerList = items.slice(0, innerCount);
-    const outerList = items.slice(innerCount);
-    const innerR = Math.min(96, maxHalfSpan * 0.72);
-    const outerR = Math.min(156, maxHalfSpan * 1.02);
-    rings.push({ list: innerList, radius: innerR, startDeg: -152, endDeg: -28 });
-    rings.push({ list: outerList, radius: outerR, startDeg: -164, endDeg: -16 });
-  }
-
-  rings.forEach((ring, rIdx) => {
-    const n = ring.list.length;
-    ring.list.forEach((it, i) => {
-      const deg = n === 1
-        ? -90
-        : ring.startDeg + ((ring.endDeg - ring.startDeg) * i) / (n - 1);
-      const rad = (deg * Math.PI) / 180;
-      const rawX = Math.cos(rad) * ring.radius;
-      const fx = Math.max(-maxHalfSpan, Math.min(maxHalfSpan, rawX));
-      const fy = Math.sin(rad) * ring.radius - (rIdx * 6);
-
-      const node = document.createElement("button");
-      node.type = "button";
-      node.className = `qe-fan-node ${it.isXfer ? "is-xfer" : ""}`;
-      node.style.setProperty("--fx", `${fx.toFixed(1)}px`);
-      node.style.setProperty("--fy", `${fy.toFixed(1)}px`);
-      node.style.transitionDelay = `${(rIdx * 3 + i) * 18}ms`;
-      node.textContent = it.label;
-
-      node.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeFanMenu();
-        openQuickSheet(null, it);
-      });
-      fanLayer.appendChild(node);
-    });
-  });
+  top5.push({ label: "更多", type: "支出", mainCat: ordered[0] || "飲食", subCat: "午餐", isMore: true });
+  return top5;
 }
 
 function openFanMenu() {
-  renderAdaptiveFanNodes();
-  fanOpen = true;
-  const btn = document.getElementById("qe-center-fan-btn");
-  const backdrop = document.getElementById("qe-fan-backdrop");
   const fanLayer = document.getElementById("qe-fan-layer");
-  const fallbackGrid = document.getElementById("qe-fan-grid-fallback");
+  const backdrop = document.getElementById("qe-fan-backdrop");
+  const btn = document.getElementById("qe-center-fan-btn");
+  if (!fanLayer || !backdrop) return;
 
-  if (btn) btn.classList.add("active");
-  if (backdrop) backdrop.classList.add("open");
-  if (fanLayer?.dataset.mode === "grid") {
-    fallbackGrid?.classList.add("open");
-  } else {
-    fanLayer?.classList.add("open");
-  }
+  const items = getTopFanItems();
+  const radius = 128;
+  const startDeg = -158, endDeg = -22;
+  fanLayer.innerHTML = "";
+
+  items.forEach((it, i) => {
+    const deg = startDeg + ((endDeg - startDeg) * i) / (items.length - 1);
+    const rad = (deg * Math.PI) / 180;
+    const fx = Math.cos(rad) * radius;
+    const fy = Math.sin(rad) * radius;
+    const node = document.createElement("button");
+    node.type = "button";
+    node.className = `qe-fan-node ${it.isMore ? "is-more" : ""}`;
+    node.style.setProperty("--fx", `${fx.toFixed(1)}px`);
+    node.style.setProperty("--fy", `${fy.toFixed(1)}px`);
+    node.textContent = it.label;
+    node.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeFanMenu();
+      openQuickSheet(null, it);
+    });
+    fanLayer.appendChild(node);
+  });
+
+  fanOpen = true;
+  btn?.classList.add("active");
+  backdrop.classList.add("open");
+  fanLayer.classList.add("open");
 }
 
 function closeFanMenu() {
@@ -544,28 +690,47 @@ function closeFanMenu() {
   document.getElementById("qe-center-fan-btn")?.classList.remove("active");
   document.getElementById("qe-fan-backdrop")?.classList.remove("open");
   document.getElementById("qe-fan-layer")?.classList.remove("open");
-  document.getElementById("qe-fan-grid-fallback")?.classList.remove("open");
 }
 
 function buildQuickEntryUI() {
-  if (document.getElementById("qe-center-fan-btn")) return;
+  if (document.getElementById("qe-modal")) return;
 
-  const bottomNav = document.querySelector("nav.fixed");
-  const togglePagesBtn = document.getElementById("btn-toggle-pages");
-  if (bottomNav && togglePagesBtn) {
-    const centerBtn = document.createElement("button");
-    centerBtn.id = "qe-center-fan-btn";
-    centerBtn.type = "button";
-    centerBtn.title = "扇形快速記帳";
-    centerBtn.setAttribute("aria-label", "扇形快速記帳");
-    centerBtn.innerHTML = `<i data-lucide="plus" class="w-5 h-5"></i>`;
-    bottomNav.insertBefore(centerBtn, togglePagesBtn);
-
-    centerBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (fanOpen) closeFanMenu();
-      else openFanMenu();
+  document.getElementById("inp-tx-search")?.addEventListener("input", (e) => {
+    searchQuery = e.target.value || "";
+    patchLedgerAndBalances();
+  });
+  document.querySelectorAll(".ftype-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      activeTypeFilter = chip.dataset.ftype;
+      document.querySelectorAll(".ftype-chip").forEach(c => {
+        c.classList.remove("btn-primary");
+        c.classList.add("btn-secondary");
+      });
+      chip.classList.remove("btn-secondary");
+      chip.classList.add("btn-primary");
+      patchLedgerAndBalances();
     });
+  });
+
+  const centerBtn = document.getElementById("qe-center-fan-btn");
+  if (centerBtn) {
+    let pressTimer = null;
+    let longTriggered = false;
+    centerBtn.addEventListener("pointerdown", () => {
+      longTriggered = false;
+      pressTimer = setTimeout(() => {
+        longTriggered = true;
+        openFanMenu();
+      }, 360);
+    });
+    centerBtn.addEventListener("pointerup", () => {
+      clearTimeout(pressTimer);
+      if (!longTriggered) {
+        if (fanOpen) closeFanMenu();
+        else openQuickSheet(null, getSmartMealSeed());
+      }
+    });
+    centerBtn.addEventListener("pointercancel", () => clearTimeout(pressTimer));
   }
 
   const backdrop = document.createElement("div");
@@ -577,84 +742,80 @@ function buildQuickEntryUI() {
   fanLayer.id = "qe-fan-layer";
   document.body.appendChild(fanLayer);
 
-  const fallbackGrid = document.createElement("div");
-  fallbackGrid.id = "qe-fan-grid-fallback";
-  document.body.appendChild(fallbackGrid);
-
-  window.addEventListener("resize", () => {
-    if (fanOpen) renderAdaptiveFanNodes();
-  });
-
   const sheet = document.createElement("div");
   sheet.id = "qe-modal";
   sheet.setAttribute("role", "dialog");
   sheet.setAttribute("aria-modal", "true");
   sheet.className = "hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4";
   sheet.innerHTML = `
-    <div class="qe-sheet w-full max-w-md p-4 space-y-2.5 max-h-[92vh] overflow-y-auto text-xs">
-      <div id="qe-swipe-header" class="flex items-center justify-between gap-2 pb-2 border-b">
-        <div class="flex gap-1 bg-slate-800/60 p-1 rounded-2xl">
-          ${["支出", "收入", "轉帳"].map(t => `<button data-qtype="${t}" class="qe-type-btn px-3 py-1 rounded-xl font-bold transition">${t}</button>`).join("")}
+    <div id="qe-sheet-card" class="qe-sheet w-full max-w-md p-4 space-y-2.5 max-h-[94vh] overflow-y-auto text-xs">
+      <div id="qe-grabber-zone" class="pt-0.5 pb-1 flex flex-col items-center cursor-grab">
+        <div class="w-10 h-1.5 rounded-full bg-slate-400/40"></div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 pb-1.5 border-b">
+        <div class="flex gap-1 bg-slate-800/40 p-1 rounded-2xl">
+          ${["支出", "收入", "轉帳"].map(t => `<button data-qtype="${t}" class="qe-type-btn px-3 py-1.5 rounded-xl text-xs font-bold transition">${t}</button>`).join("")}
         </div>
         <div class="flex items-center gap-1.5">
-          <button id="qe-tier-btn" class="px-2.5 py-1 rounded-xl btn-soft-dark font-bold">第1層：金額</button>
-          <button id="qe-close-btn" aria-label="關閉視窗" class="p-1 text-slate-400"><i data-lucide="x" class="w-5 h-5"></i></button>
+          <button id="qe-more-toggle" class="px-2.5 py-1.5 rounded-xl btn-secondary text-xs font-bold">進階欄位</button>
+          <button id="qe-close-btn" aria-label="關閉視窗" class="p-1.5 text-slate-400"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
       </div>
 
       <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5" id="qe-presets-bar"></div>
 
-      <div id="qe-xfer-quick-bar" class="hidden p-2 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 grid grid-cols-2 gap-2">
-        <div>
-          <span class="text-[11px] text-slate-400 block">轉出帳戶</span>
-          <select id="qe-acc-sel" aria-label="轉出帳戶" class="w-full p-1.5 mt-0.5 font-bold"></select>
-        </div>
-        <div>
-          <span class="text-[11px] text-cyan-400 block">轉入帳戶</span>
-          <select id="qe-to-acc-sel" aria-label="轉入帳戶" class="w-full p-1.5 mt-0.5 font-bold"></select>
-        </div>
-      </div>
-
-      <div class="p-3 rounded-2xl bg-slate-800/50 border flex items-center justify-between gap-2">
-        <div class="min-w-0">
-          <div class="text-[11px] font-bold text-cyan-400 truncate" id="qe-sel-summary">支出 · 飲食 · 午餐 · 現金</div>
-          <input type="text" id="qe-name-input" class="mt-1 px-2 py-1 w-44" placeholder="備註名稱（可選）">
+      <div class="p-3 rounded-2xl bg-slate-800/40 border flex items-center justify-between gap-2">
+        <div class="min-w-0 flex-1">
+          <div class="text-xs font-bold text-cyan-400 truncate" id="qe-sel-summary">支出 · 飲食 · 午餐</div>
+          <input type="text" id="qe-name-input" class="mt-1.5 px-2.5 py-1.5 w-full" placeholder="備註名稱（可選）">
         </div>
         <div class="text-right shrink-0">
-          <div class="text-[11px] text-slate-400" id="qe-cur-label">TWD</div>
-          <div id="qe-amount-display" class="text-2xl font-extrabold tracking-tight text-cyan-400">0</div>
+          <div class="text-xs font-bold text-slate-400" id="qe-cur-label">TWD</div>
+          <div id="qe-amount-display" class="text-3xl font-extrabold tracking-tight text-cyan-400">0</div>
         </div>
       </div>
 
-      <div id="qe-tier-1" class="grid grid-cols-4 gap-2">
-        ${["7","8","9","⌫","4","5","6","+","1","2","3","-","C","0","00","="].map(k => `
-          <button data-key="${k}" class="qe-key-btn py-3 rounded-2xl">${esc(k)}</button>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <select id="qe-acc-sel" aria-label="選擇帳戶" class="w-full p-2 font-bold"></select>
+        </div>
+        <div class="flex items-center gap-1">
+          <button type="button" id="qe-date-today" class="px-2.5 py-2 rounded-xl btn-primary text-xs font-bold shrink-0">今天</button>
+          <button type="button" id="qe-date-yest" class="px-2.5 py-2 rounded-xl btn-secondary text-xs font-bold shrink-0">昨天</button>
+          <input type="date" id="qe-date-inp" aria-label="選擇日期" class="w-full p-1.5">
+        </div>
+      </div>
+
+      <div id="qe-xfer-to-wrap" class="hidden">
+        <span class="text-xs text-cyan-400 font-bold">轉入帳戶</span>
+        <select id="qe-to-acc-sel" aria-label="轉入帳戶" class="w-full p-2 mt-1 font-bold"></select>
+      </div>
+
+      <div class="space-y-1.5">
+        <div id="qe-main-chips" class="flex items-center gap-1.5 overflow-x-auto pb-0.5"></div>
+        <div id="qe-sub-chips" class="flex items-center gap-1.5 overflow-x-auto pb-0.5"></div>
+      </div>
+
+      <div id="qe-advanced-panel" class="hidden p-3 rounded-2xl bg-slate-800/40 border space-y-2">
+        <div class="grid grid-cols-2 gap-2">
+          <div><span class="text-slate-400">專案</span><select id="qe-proj-sel" aria-label="專案" class="w-full p-2 mt-1"></select></div>
+          <div><span class="text-slate-400">手續費</span><input type="number" inputmode="decimal" id="qe-fee-inp" class="w-full p-2 mt-1" placeholder="0"></div>
+        </div>
+        <div><span class="text-slate-400">標籤</span><input type="text" id="qe-tags-inp" class="w-full p-2 mt-1" placeholder="#外食"></div>
+        <button id="qe-save-combo-btn" class="w-full py-2 rounded-xl btn-secondary font-semibold">存為雲端常用組合</button>
+      </div>
+
+      <div class="grid grid-cols-4 gap-1.5 pt-0.5">
+        ${["7","8","9","⌫","4","5","6","×","1","2","3","÷","C","0","+","-"].map(k => `
+          <button type="button" data-key="${k}" class="qe-key-btn rounded-2xl">${esc(k)}</button>
         `).join("")}
       </div>
 
-      <div id="qe-tier-2" class="hidden space-y-2.5">
-        <div class="text-[11px] font-bold text-slate-400">主類別（點選展開子類別）</div>
-        <div id="qe-main-grid" class="grid grid-cols-3 gap-2"></div>
-        <div class="text-[11px] font-bold text-slate-400 pt-1">子類別</div>
-        <div id="qe-sub-grid" class="grid grid-cols-3 gap-2"></div>
-      </div>
-
-      <div id="qe-tier-3" class="hidden space-y-2.5">
-        <div id="qe-normal-acc-box">
-          <span class="text-slate-400">扣款 / 入帳帳戶</span>
-          <select id="qe-acc-sel-normal" aria-label="扣款或入帳帳戶" class="w-full p-2 mt-1"></select>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div><span class="text-slate-400">日期</span><input type="date" id="qe-date-inp" class="w-full p-2 mt-1"></div>
-          <div><span class="text-slate-400">專案</span><select id="qe-proj-sel" aria-label="專案" class="w-full p-2 mt-1"></select></div>
-        </div>
-        <div><span class="text-slate-400">標籤</span><input type="text" id="qe-tags-inp" class="w-full p-2 mt-1" placeholder="#外食"></div>
-        <button id="qe-save-combo-btn" class="w-full py-2 rounded-xl btn-soft-dark font-semibold">存為常用組合</button>
-      </div>
-
-      <div class="grid grid-cols-2 gap-2 pt-1">
-        <button id="qe-save-again-btn" class="py-3 rounded-2xl btn-soft-dark font-bold">儲存並再記一筆</button>
-        <button id="qe-save-btn" class="py-3 rounded-2xl btn-soft-accent font-bold">完成儲存</button>
+      <div class="grid grid-cols-3 gap-2 pt-1">
+        <button type="button" data-key="=" class="qe-key-btn rounded-2xl font-extrabold">=</button>
+        <button id="qe-save-again-btn" class="py-3 rounded-2xl btn-secondary text-sm font-bold">再記一筆</button>
+        <button id="qe-save-btn" class="py-3 rounded-2xl btn-primary text-sm font-bold">完成儲存</button>
       </div>
     </div>
   `;
@@ -664,68 +825,45 @@ function buildQuickEntryUI() {
   sheet.addEventListener("click", (e) => {
     if (e.target === sheet) sheet.classList.add("hidden");
   });
-
-  const oldBtn = document.getElementById("btn-quick-tx");
-  if (oldBtn) {
-    oldBtn.addEventListener("click", (e) => {
-      e.preventDefault(); e.stopImmediatePropagation();
-      closeFanMenu();
-      openQuickSheet(null, null);
-    }, true);
-  }
   document.getElementById("qe-close-btn").addEventListener("click", () => sheet.classList.add("hidden"));
 
-  const types = ["支出", "收入", "轉帳"];
-  let sx = 0;
-  const hdr = document.getElementById("qe-swipe-header");
-  hdr.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; }, { passive: true });
-  hdr.addEventListener("touchend", (e) => {
-    const dx = e.changedTouches[0].clientX - sx;
-    if (Math.abs(dx) > 45) {
-      const idx = types.indexOf(currentType);
-      setQuickType(types[dx < 0 ? (idx + 1) % types.length : (idx - 1 + types.length) % types.length]);
-    }
+  let grabStartY = 0;
+  const grabZone = document.getElementById("qe-grabber-zone");
+  grabZone.addEventListener("touchstart", (e) => { grabStartY = e.touches[0].clientY; }, { passive: true });
+  grabZone.addEventListener("touchend", (e) => {
+    if (e.changedTouches[0].clientY - grabStartY > 55) sheet.classList.add("hidden");
+  });
+
+  document.getElementById("qe-more-toggle").addEventListener("click", () => {
+    document.getElementById("qe-advanced-panel").classList.toggle("hidden");
   });
 
   document.querySelectorAll(".qe-type-btn").forEach(btn => {
     btn.addEventListener("click", () => setQuickType(btn.dataset.qtype));
   });
 
-  document.getElementById("qe-tier-btn").addEventListener("click", () => {
-    tierLevel = (tierLevel % 3) + 1;
-    applyTierUI();
-  });
-
   document.querySelectorAll(".qe-key-btn").forEach(btn => {
     btn.addEventListener("click", () => handleCalcKey(btn.dataset.key));
   });
 
-  const accXfer = document.getElementById("qe-acc-sel");
-  const accNorm = document.getElementById("qe-acc-sel-normal");
-  const accTo = document.getElementById("qe-to-acc-sel");
-  accXfer.addEventListener("change", () => {
-    accNorm.value = accXfer.value;
-    if (accTo.value === accXfer.value) {
-      const other = Array.from(accTo.options).find(o => o.value !== accXfer.value);
-      if (other) accTo.value = other.value;
-    }
-    updateQuickSummary();
-  });
-  accNorm.addEventListener("change", () => {
-    accXfer.value = accNorm.value;
-    updateQuickSummary();
-  });
-  accTo.addEventListener("change", () => updateQuickSummary());
+  const dateInp = document.getElementById("qe-date-inp");
+  const btnToday = document.getElementById("qe-date-today");
+  const btnYest = document.getElementById("qe-date-yest");
+  const syncDateChips = () => {
+    const todayStr = formatIsoDate(new Date());
+    const yestStr = formatIsoDate(new Date(Date.now() - 86400000));
+    btnToday.className = `px-2.5 py-2 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === todayStr ? "btn-primary" : "btn-secondary"}`;
+    btnYest.className = `px-2.5 py-2 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === yestStr ? "btn-primary" : "btn-secondary"}`;
+  };
+  btnToday.addEventListener("click", () => { dateInp.value = formatIsoDate(new Date()); syncDateChips(); });
+  btnYest.addEventListener("click", () => { dateInp.value = formatIsoDate(new Date(Date.now() - 86400000)); syncDateChips(); });
+  dateInp.addEventListener("change", syncDateChips);
 
+  document.getElementById("qe-acc-sel").addEventListener("change", () => updateQuickSummary());
+  document.getElementById("qe-to-acc-sel").addEventListener("change", () => updateQuickSummary());
   document.getElementById("qe-save-btn").addEventListener("click", () => commitQuickTx(false));
   document.getElementById("qe-save-again-btn").addEventListener("click", () => commitQuickTx(true));
   document.getElementById("qe-save-combo-btn").addEventListener("click", saveCurrentAsPreset);
-}
-
-function getSelectedAccount() {
-  return currentType === "轉帳"
-    ? document.getElementById("qe-acc-sel").value
-    : document.getElementById("qe-acc-sel-normal").value;
 }
 
 function setQuickType(t) {
@@ -736,36 +874,22 @@ function setQuickType(t) {
     b.classList.toggle("text-cyan-400", active);
   });
   const isXfer = (t === "轉帳");
-  document.getElementById("qe-xfer-quick-bar").classList.toggle("hidden", !isXfer);
-  document.getElementById("qe-normal-acc-box").classList.toggle("hidden", isXfer);
-
-  const accXfer = document.getElementById("qe-acc-sel");
-  const accTo = document.getElementById("qe-to-acc-sel");
-  if (isXfer && accXfer.value === accTo.value) {
-    const other = Array.from(accTo.options).find(o => o.value !== accXfer.value);
-    if (other) accTo.value = other.value;
+  document.getElementById("qe-xfer-to-wrap").classList.toggle("hidden", !isXfer);
+  const accSel = document.getElementById("qe-acc-sel");
+  const toSel = document.getElementById("qe-to-acc-sel");
+  if (isXfer && accSel.value === toSel.value) {
+    const other = Array.from(toSel.options).find(o => o.value !== accSel.value);
+    if (other) toSel.value = other.value;
   }
   updateQuickSummary();
-}
-
-function applyTierUI() {
-  const names = { 1: "第1層：金額", 2: "第2層：類別", 3: "第3層：進階" };
-  document.getElementById("qe-tier-btn").textContent = names[tierLevel];
-  document.getElementById("qe-tier-1").classList.toggle("hidden", tierLevel !== 1);
-  document.getElementById("qe-tier-2").classList.toggle("hidden", tierLevel !== 2);
-  document.getElementById("qe-tier-3").classList.toggle("hidden", tierLevel !== 3);
 }
 
 function handleCalcKey(k) {
   if (k === "C") calcExpr = "";
   else if (k === "⌫") calcExpr = calcExpr.slice(0, -1);
   else if (k === "=") {
-    try {
-      if (/^[0-9+\-*/().\s]+$/.test(calcExpr)) {
-        const res = Function(`"use strict";return (${calcExpr})`)();
-        calcExpr = isFinite(res) ? String(Math.max(0, Math.round(res * 100) / 100)) : "";
-      }
-    } catch (e) {}
+    const res = evaluateSafeMath(calcExpr);
+    calcExpr = isFinite(res) ? String(Math.round(res * 100) / 100) : "";
   } else {
     calcExpr += k;
   }
@@ -790,40 +914,38 @@ function openQuickSheet(editTx, presetSeed) {
   editingTxSnapshot = editTx ? { ...editTx } : null;
   currentType = seed?.type === "轉出" || seed?.type === "轉入" ? "轉帳" : (seed?.type || "支出");
   calcExpr = seed?.amount ? String(Math.abs(Number(seed.amount))) : "";
-  selectedMainCat = seed?.mainCat || mains[0] || "飲食";
+  selectedMainCat = seed?.mainCat || recentCats[0] || mains[0] || "飲食";
   selectedSubCat = seed?.subCat || (cats[selectedMainCat]?.[0] || "午餐");
-  tierLevel = (presetSeed && !presetSeed.isXfer && (cats[selectedMainCat]?.length || 0) > 1) ? 2 : 1;
 
   const accs = getAccountList();
   const catKey = `${selectedMainCat}::${selectedSubCat}`;
   const defaultAcc = seed?.account || lastCatAccMap[catKey] || accs[0] || "現金";
   const defaultToAcc = editTx?.toAccount || accs.find(a => a !== defaultAcc) || accs[0] || "現金";
 
-  const accXfer = document.getElementById("qe-acc-sel");
-  const accNorm = document.getElementById("qe-acc-sel-normal");
-  const accTo = document.getElementById("qe-to-acc-sel");
-
+  const accSel = document.getElementById("qe-acc-sel");
+  const toSel = document.getElementById("qe-to-acc-sel");
   const optsHtml = accs.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join("");
-  accXfer.innerHTML = optsHtml;
-  accNorm.innerHTML = optsHtml;
-  accTo.innerHTML = optsHtml;
-
-  accXfer.value = defaultAcc;
-  accNorm.value = defaultAcc;
-  accTo.value = defaultToAcc;
+  accSel.innerHTML = optsHtml;
+  toSel.innerHTML = optsHtml;
+  accSel.value = defaultAcc;
+  toSel.value = defaultToAcc;
 
   const projSel = document.getElementById("qe-proj-sel");
   projSel.innerHTML = `<option value="">無專案</option>` + (state.projects || []).map(p => `<option value="${esc(p.name)}" ${p.name === editTx?.project ? "selected" : ""}>${esc(p.name)}</option>`).join("");
 
-  document.getElementById("qe-date-inp").value = normalizeDateForInput(editTx?.date);
-  document.getElementById("qe-name-input").value = editTx?.name || "";
+  const dateInp = document.getElementById("qe-date-inp");
+  dateInp.value = normalizeDateForInput(editTx?.date);
+  document.getElementById("qe-date-today").className = `px-2.5 py-2 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === formatIsoDate(new Date()) ? "btn-primary" : "btn-secondary"}`;
+  document.getElementById("qe-date-yest").className = `px-2.5 py-2 rounded-xl text-xs font-bold shrink-0 ${dateInp.value === formatIsoDate(new Date(Date.now() - 86400000)) ? "btn-primary" : "btn-secondary"}`;
+
+  document.getElementById("qe-name-input").value = seed?.name || "";
+  document.getElementById("qe-fee-inp").value = editTx?.fee || "";
   document.getElementById("qe-tags-inp").value = editTx?.tags || "";
   document.getElementById("qe-amount-display").textContent = calcExpr || "0";
 
   setQuickType(currentType);
-  applyTierUI();
   renderPresetsBar();
-  renderCategoryGrids();
+  renderCategoryChips();
   updateQuickSummary();
 
   document.getElementById("qe-modal").classList.remove("hidden");
@@ -832,79 +954,85 @@ function openQuickSheet(editTx, presetSeed) {
 
 function renderPresetsBar() {
   const bar = document.getElementById("qe-presets-bar");
-  bar.innerHTML = presets.map((p, idx) => `
-    <button data-pidx="${idx}" class="qe-preset-chip shrink-0 px-2.5 py-1 rounded-full btn-soft-dark text-[11px] font-semibold">${esc(p.label)}</button>
+  const list = getPresetsList();
+  bar.innerHTML = list.map((p, idx) => `
+    <button data-pidx="${idx}" class="qe-preset-chip shrink-0 px-3 py-1.5 rounded-full btn-secondary text-xs font-bold">${esc(p.label)}</button>
   `).join("");
   bar.querySelectorAll(".qe-preset-chip").forEach(btn => {
+    let holdTimer = null;
+    const idx = parseInt(btn.dataset.pidx, 10);
+    btn.addEventListener("pointerdown", () => {
+      holdTimer = setTimeout(async () => {
+        const cur = [...getPresetsList()];
+        const removed = cur.splice(idx, 1);
+        if (removed.length && window.__FINANCE_APP__?.savePresetsCloud) {
+          await window.__FINANCE_APP__.savePresetsCloud(cur);
+          renderPresetsBar();
+          window.showToast("已刪除常用組合");
+        }
+      }, 600);
+    });
+    btn.addEventListener("pointerup", () => clearTimeout(holdTimer));
     btn.addEventListener("click", () => {
-      const p = presets[parseInt(btn.dataset.pidx, 10)];
+      const p = getPresetsList()[idx];
       if (!p) return;
       currentType = p.type || "支出";
       calcExpr = String(p.amount || "");
       selectedMainCat = p.mainCat || selectedMainCat;
       selectedSubCat = p.subCat || selectedSubCat;
-      if (p.account) {
-        document.getElementById("qe-acc-sel").value = p.account;
-        document.getElementById("qe-acc-sel-normal").value = p.account;
-      }
+      if (p.account) document.getElementById("qe-acc-sel").value = p.account;
       if (p.name) document.getElementById("qe-name-input").value = p.name;
       document.getElementById("qe-amount-display").textContent = calcExpr || "0";
       setQuickType(currentType);
-      renderCategoryGrids();
+      renderCategoryChips();
       updateQuickSummary();
     });
   });
 }
 
-function renderCategoryGrids() {
+function renderCategoryChips() {
   const state = window.__FINANCE_APP__.getState();
   const cats = state.categories || {};
-  const mains = Object.keys(cats);
-  const mGrid = document.getElementById("qe-main-grid");
-  const sGrid = document.getElementById("qe-sub-grid");
+  const allMains = Object.keys(cats);
+  const orderedMains = [...new Set([...recentCats, ...allMains])].filter(m => allMains.includes(m));
 
-  mGrid.innerHTML = mains.map(m => `
-    <button data-m="${esc(m)}" class="qe-m-btn py-2.5 px-2 rounded-2xl border font-bold truncate ${m === selectedMainCat ? "bg-cyan-500/25 text-cyan-400 border-cyan-500/40" : "bg-slate-800/50"}">${esc(m)}</button>
+  const mRow = document.getElementById("qe-main-chips");
+  const sRow = document.getElementById("qe-sub-chips");
+
+  mRow.innerHTML = orderedMains.map(m => `
+    <button type="button" data-m="${esc(m)}" class="qe-m-chip shrink-0 px-3 py-1.5 rounded-full text-xs font-bold ${m === selectedMainCat ? "btn-primary" : "btn-secondary"}">${esc(m)}</button>
   `).join("");
 
   const subs = cats[selectedMainCat] || ["一般"];
   if (!subs.includes(selectedSubCat)) selectedSubCat = subs[0] || "一般";
-  sGrid.innerHTML = subs.map(s => `
-    <button data-s="${esc(s)}" class="qe-s-btn py-2.5 px-2 rounded-2xl border font-semibold truncate ${s === selectedSubCat ? "bg-emerald-500/25 text-emerald-400 border-emerald-500/40" : "bg-slate-800/50"}">${esc(s)}</button>
+  sRow.innerHTML = subs.map(s => `
+    <button type="button" data-s="${esc(s)}" class="qe-s-chip shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold ${s === selectedSubCat ? "btn-primary" : "btn-secondary"}">${esc(s)}</button>
   `).join("");
 
-  mGrid.querySelectorAll(".qe-m-btn").forEach(b => {
+  mRow.querySelectorAll(".qe-m-chip").forEach(b => {
     b.addEventListener("click", () => {
       selectedMainCat = b.dataset.m;
       selectedSubCat = (cats[selectedMainCat]?.[0]) || "一般";
       const remembered = lastCatAccMap[`${selectedMainCat}::${selectedSubCat}`];
-      if (remembered) {
-        document.getElementById("qe-acc-sel").value = remembered;
-        document.getElementById("qe-acc-sel-normal").value = remembered;
-      }
-      renderCategoryGrids();
+      if (remembered) document.getElementById("qe-acc-sel").value = remembered;
+      renderCategoryChips();
       updateQuickSummary();
     });
   });
 
-  sGrid.querySelectorAll(".qe-s-btn").forEach(b => {
+  sRow.querySelectorAll(".qe-s-chip").forEach(b => {
     b.addEventListener("click", () => {
       selectedSubCat = b.dataset.s;
       const remembered = lastCatAccMap[`${selectedMainCat}::${selectedSubCat}`];
-      if (remembered) {
-        document.getElementById("qe-acc-sel").value = remembered;
-        document.getElementById("qe-acc-sel-normal").value = remembered;
-      }
-      renderCategoryGrids();
+      if (remembered) document.getElementById("qe-acc-sel").value = remembered;
+      renderCategoryChips();
       updateQuickSummary();
-      tierLevel = 1;
-      applyTierUI();
     });
   });
 }
 
 function updateQuickSummary() {
-  const acc = getSelectedAccount() || "現金";
+  const acc = document.getElementById("qe-acc-sel")?.value || "現金";
   const toAcc = document.getElementById("qe-to-acc-sel")?.value || "";
   const accPart = currentType === "轉帳" ? `${acc} → ${toAcc}` : acc;
   const cur = editingTxSnapshot?.currency || detectCurrencyByAccount(acc);
@@ -913,33 +1041,35 @@ function updateQuickSummary() {
   document.getElementById("qe-sel-summary").textContent = `${currentType} · ${selectedMainCat} · ${selectedSubCat} · ${accPart}`;
 }
 
-function saveCurrentAsPreset() {
+async function saveCurrentAsPreset() {
   const amt = parseFloat(calcExpr) || 0;
   const label = document.getElementById("qe-name-input").value.trim() || `${selectedSubCat} ${amt}`;
-  presets.unshift({
+  const next = [{
     label,
     type: currentType,
     amount: amt,
     mainCat: selectedMainCat,
     subCat: selectedSubCat,
-    account: getSelectedAccount(),
+    account: document.getElementById("qe-acc-sel").value,
     name: document.getElementById("qe-name-input").value.trim()
-  });
-  presets = presets.slice(0, 8);
-  saveLocalMeta();
+  }, ...getPresetsList()].slice(0, 10);
+
+  if (window.__FINANCE_APP__?.savePresetsCloud) {
+    await window.__FINANCE_APP__.savePresetsCloud(next);
+  }
   renderPresetsBar();
-  window.showToast("已存為常用組合：" + label);
+  window.showToast("已存為雲端常用組合：" + label);
 }
 
 async function commitQuickTx(keepOpen) {
-  if (/[+\-*/]/.test(calcExpr)) handleCalcKey("=");
+  if (/[+\-*/×÷]/.test(calcExpr)) handleCalcKey("=");
   const amt = parseFloat(calcExpr);
   if (isNaN(amt) || amt <= 0) return alert("請先輸入大於 0 的金額");
 
   const state = window.__FINANCE_APP__.getState();
   const uid = auth.currentUser.uid;
   const now = new Date();
-  const acc = getSelectedAccount();
+  const acc = document.getElementById("qe-acc-sel").value;
   const toAcc = currentType === "轉帳" ? document.getElementById("qe-to-acc-sel").value : "";
   if (currentType === "轉帳" && (!acc || !toAcc || acc === toAcc)) {
     return alert("請選擇兩個不同的轉出與轉入帳戶");
@@ -948,15 +1078,16 @@ async function commitQuickTx(keepOpen) {
   const nameVal = document.getElementById("qe-name-input").value.trim() || (currentType === "轉帳" ? `${acc}→${toAcc}` : selectedSubCat);
   const projVal = document.getElementById("qe-proj-sel").value || "";
   const tagsVal = document.getElementById("qe-tags-inp").value.trim() || "";
+  const feeVal = parseFloat(document.getElementById("qe-fee-inp").value) || 0;
   const pickedDate = document.getElementById("qe-date-inp").value || formatIsoDate(now);
 
   lastCatAccMap[`${selectedMainCat}::${selectedSubCat}`] = acc;
+  recentCats = [selectedMainCat, ...recentCats.filter(c => c !== selectedMainCat)].slice(0, 8);
   saveLocalMeta();
 
   const isShared = state.activeBookId !== "personal";
 
   if (editingTxSnapshot) {
-    // 編輯模式：保留原交易的 time、ts、currency、fee、discount、merchant、payerEmail 等未改動欄位
     const origTime = editingTxSnapshot.time || `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const parsedTs = Date.parse(`${pickedDate.replace(/-/g, "/")} ${origTime}`);
     const payload = {
@@ -966,6 +1097,7 @@ async function commitQuickTx(keepOpen) {
       toAccount: toAcc,
       currency: editingTxSnapshot.currency || detectCurrencyByAccount(acc),
       amount: amt,
+      fee: feeVal,
       mainCat: selectedMainCat,
       subCat: selectedSubCat,
       name: nameVal,
@@ -990,7 +1122,7 @@ async function commitQuickTx(keepOpen) {
       toAccount: toAcc,
       currency: detectCurrencyByAccount(acc),
       amount: amt,
-      fee: 0,
+      fee: feeVal,
       discount: 0,
       mainCat: selectedMainCat,
       subCat: selectedSubCat,
@@ -1016,8 +1148,6 @@ async function commitQuickTx(keepOpen) {
     calcExpr = "";
     document.getElementById("qe-amount-display").textContent = "0";
     document.getElementById("qe-name-input").value = "";
-    tierLevel = 1;
-    applyTierUI();
   } else {
     document.getElementById("qe-modal").classList.add("hidden");
   }

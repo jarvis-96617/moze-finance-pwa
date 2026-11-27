@@ -25,12 +25,39 @@
       }
       window.__applyTheme = apply; apply();
       if (mq.addEventListener) mq.addEventListener('change', apply); else if (mq.addListener) mq.addListener(apply);
-      var tt;
-      window.showToast = function (msg, isErr) {
+
+      var tt, undoHandler = null;
+      window.showToast = function (msg, isErr, onUndo) {
         var el = document.getElementById('toast'); if (!el) return;
-        el.textContent = msg; el.className = (isErr ? 'err ' : '') + 'show';
-        clearTimeout(tt); tt = setTimeout(function () { el.className = isErr ? 'err' : ''; }, isErr ? 4500 : 2200);
+        undoHandler = typeof onUndo === 'function' ? onUndo : null;
+        if (undoHandler) {
+          el.innerHTML = '';
+          var span = document.createElement('span');
+          span.textContent = msg;
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = '復原';
+          btn.style.cssText = 'margin-left:10px;padding:2px 8px;border-radius:999px;background:var(--accent);color:#fff;font-weight:800;border:none;cursor:pointer;';
+          btn.addEventListener('click', function () {
+            clearTimeout(tt);
+            el.className = '';
+            var fn = undoHandler;
+            undoHandler = null;
+            if (fn) fn();
+          });
+          el.appendChild(span);
+          el.appendChild(btn);
+        } else {
+          el.textContent = msg;
+        }
+        el.className = (isErr ? 'err ' : '') + 'show';
+        clearTimeout(tt);
+        tt = setTimeout(function () {
+          el.className = isErr ? 'err' : '';
+          undoHandler = null;
+        }, undoHandler ? 5000 : (isErr ? 4500 : 2200));
       };
+
       window.esc = function (s) {
         return String(s ?? '').replace(/[&<>"']/g, function (c) {
           return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -43,42 +70,42 @@
   <style>
     :root {
       color-scheme: light;
-      --bg:#f3f1ec; --ink:#2b2f2b; --ink-2:#4b504b; --ink-3:#6e736e; --ink-4:#8d928d;
-      --accent:#2f6f6a; --red:#d92d20; --green:#1f8a4c; --amber:#b45309; --indigo:#4f46e5;
-      --purple:#7c3aed; --pink:#be185d; --blue:#1d4ed8;
-      --line:rgba(60,64,58,.11); --glass:rgba(255,255,255,.66); --glass-flat:rgba(255,255,255,.82); --glass-strong:rgba(250,249,246,.94);
-      --card-border:rgba(255,255,255,.88); --card-hi:#fff; --shadow:0 8px 26px rgba(70,74,66,.09),0 1px 3px rgba(70,74,66,.05);
-      --slate-bg:rgba(60,64,58,.06); --input-bg:rgba(255,255,255,.90); --input-border:rgba(60,64,58,.15);
-      --header-bg:rgba(246,244,239,.82); --nav-bg:rgba(255,255,255,.78); --nav-border:rgba(255,255,255,.92); --nav-shadow:0 10px 28px rgba(70,74,66,.14);
+      --bg:#f3f1ec; --ink:#222622; --ink-2:#3f453f; --ink-3:#565c56; --ink-4:#686e68;
+      --accent:#25635e; --red:#c82318; --green:#177a40; --amber:#a14907; --indigo:#4338ca;
+      --purple:#6d28d9; --pink:#a2144d; --blue:#1d4ed8;
+      --line:rgba(60,64,58,.13); --glass:rgba(255,255,255,.88); --glass-flat:rgba(255,255,255,.92); --glass-strong:rgba(250,249,246,.97);
+      --card-border:rgba(255,255,255,.92); --card-hi:#fff; --shadow:0 6px 20px rgba(70,74,66,.08),0 1px 3px rgba(70,74,66,.04);
+      --slate-bg:rgba(60,64,58,.06); --input-bg:rgba(255,255,255,.95); --input-border:rgba(60,64,58,.18);
+      --header-bg:rgba(246,244,239,.90); --nav-bg:rgba(255,255,255,.90); --nav-border:rgba(255,255,255,.95); --nav-shadow:0 10px 26px rgba(70,74,66,.13);
+      --btn-pri-bg:linear-gradient(135deg,#25635e,#1f4e5f);
+      --btn-sec-bg:#e9ece8;
+      --btn-sec-border:rgba(34,38,34,.14);
       --soft-dark-btn:linear-gradient(135deg,#334155,#263244);
-      --soft-dark-accent:linear-gradient(135deg,#2a6f7b,#234e70);
-      --soft-dark-surface:#283346;
+      --soft-dark-accent:linear-gradient(135deg,#25635e,#1f4e5f);
       --soft-dark-border:rgba(148,163,184,.28);
-      --btn-shadow:0 6px 16px rgba(30,41,59,.18);
-      --tint-accent:rgba(47,111,106,.12); --tint-accent-b:rgba(47,111,106,.28);
-      --tint-rose:rgba(217,45,32,.10); --tint-rose-b:rgba(217,45,32,.24);
-      --overlay:rgba(30,36,48,.38);
-      --blob1:rgba(255,255,255,.95); --blob2:rgba(214,221,212,.75); --blob3:rgba(226,220,208,.80); --blob4:rgba(210,218,214,.60);
-      --chip-twd:#6e736e; --chip-jpy:#b45309; --chip-krw:#0369a1; --chip-usd:#15803d;
+      --tint-accent:rgba(37,99,94,.12); --tint-accent-b:rgba(37,99,94,.28);
+      --tint-rose:rgba(200,35,24,.10); --tint-rose-b:rgba(200,35,24,.24);
+      --blob1:rgba(255,255,255,.90); --blob2:rgba(214,221,212,.65); --blob3:rgba(226,220,208,.70); --blob4:rgba(210,218,214,.55);
+      --chip-twd:#565c56; --chip-jpy:#a14907; --chip-krw:#0369a1; --chip-usd:#15803d;
     }
     :root[data-theme="dark"] {
       color-scheme: dark;
-      --bg:#121724; --ink:#f1f5f9; --ink-2:#cbd5e1; --ink-3:#94a3b8; --ink-4:#76859b;
+      --bg:#121724; --ink:#f1f5f9; --ink-2:#cbd5e1; --ink-3:#9aa8bd; --ink-4:#8595ad;
       --accent:#38bdf8; --red:#fb7185; --green:#34d399; --amber:#fbbf24; --indigo:#a5b4fc;
       --purple:#c4b5fd; --pink:#f9a8d4; --blue:#93c5fd;
-      --line:rgba(203,213,225,.12); --glass:rgba(38,48,68,.58); --glass-flat:rgba(39,50,72,.78); --glass-strong:rgba(30,39,58,.94);
-      --card-border:rgba(148,163,184,.18); --card-hi:rgba(255,255,255,.12); --shadow:0 10px 28px rgba(10,15,28,.34);
-      --slate-bg:rgba(71,85,105,.28); --input-bg:rgba(39,50,72,.85); --input-border:rgba(148,163,184,.22);
-      --header-bg:rgba(23,30,45,.82); --nav-bg:rgba(34,44,64,.82); --nav-border:rgba(148,163,184,.22); --nav-shadow:0 12px 30px rgba(10,15,28,.40);
+      --line:rgba(203,213,225,.13); --glass:rgba(34,43,62,.84); --glass-flat:rgba(37,47,68,.90); --glass-strong:rgba(28,36,54,.97);
+      --card-border:rgba(148,163,184,.20); --card-hi:rgba(255,255,255,.10); --shadow:0 8px 24px rgba(10,15,28,.30);
+      --slate-bg:rgba(71,85,105,.28); --input-bg:rgba(39,50,72,.90); --input-border:rgba(148,163,184,.24);
+      --header-bg:rgba(22,29,44,.90); --nav-bg:rgba(30,39,58,.90); --nav-border:rgba(148,163,184,.24); --nav-shadow:0 12px 28px rgba(10,15,28,.38);
+      --btn-pri-bg:linear-gradient(135deg,#0284c7,#0369a1);
+      --btn-sec-bg:#2b384e;
+      --btn-sec-border:rgba(148,163,184,.26);
       --soft-dark-btn:linear-gradient(135deg,#3b4c66,#2d3b52);
-      --soft-dark-accent:linear-gradient(135deg,#2e7d8b,#2b5876);
-      --soft-dark-surface:#314059;
+      --soft-dark-accent:linear-gradient(135deg,#0284c7,#0369a1);
       --soft-dark-border:rgba(148,163,184,.30);
-      --btn-shadow:0 6px 16px rgba(15,23,42,.28);
       --tint-accent:rgba(56,189,248,.16); --tint-accent-b:rgba(56,189,248,.34);
       --tint-rose:rgba(251,113,133,.15); --tint-rose-b:rgba(251,113,133,.32);
-      --overlay:rgba(15,20,32,.56);
-      --blob1:rgba(56,189,248,.16); --blob2:rgba(129,140,248,.16); --blob3:rgba(52,211,153,.10); --blob4:rgba(251,191,36,.08);
+      --blob1:rgba(56,189,248,.14); --blob2:rgba(129,140,248,.14); --blob3:rgba(52,211,153,.09); --blob4:rgba(251,191,36,.07);
       --chip-twd:#cbd5e1; --chip-jpy:#fbbf24; --chip-krw:#38bdf8; --chip-usd:#4ade80;
     }
 
@@ -88,7 +115,7 @@
       font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang TC","Noto Sans TC","Microsoft JhengHei","Helvetica Neue",sans-serif;
       font-feature-settings:"tnum" 1; letter-spacing:-0.01em;
       -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
-      transition:background-color .3s;
+      transition:background-color .25s;
     }
     body::before {
       content:""; position:fixed; inset:-10%; z-index:-1; pointer-events:none;
@@ -116,101 +143,112 @@
 
     .glass-card {
       background-color:var(--glass);
-      -webkit-backdrop-filter:blur(24px) saturate(165%); backdrop-filter:blur(24px) saturate(165%);
       border:1px solid var(--card-border);
       box-shadow:inset 0 1px 0 var(--card-hi), var(--shadow);
       border-radius:1.35rem;
     }
 
-    .btn-soft-dark {
-      background: var(--soft-dark-btn) !important;
-      color: #f8fafc !important;
-      border: 1px solid var(--soft-dark-border) !important;
-      box-shadow: var(--btn-shadow);
+    .btn-primary {
+      background: var(--btn-pri-bg);
+      color: #ffffff;
+      border: 1px solid rgba(255,255,255,.16);
+      box-shadow: 0 4px 12px rgba(15,23,42,.16);
+      transition: transform .12s cubic-bezier(.2,.9,.25,1);
     }
-    .btn-soft-accent {
-      background: var(--soft-dark-accent) !important;
-      color: #f8fafc !important;
-      border: 1px solid rgba(125,211,252,.32) !important;
-      box-shadow: var(--btn-shadow);
+    .btn-secondary {
+      background: var(--btn-sec-bg);
+      color: var(--ink);
+      border: 1px solid var(--btn-sec-border);
+      transition: transform .12s cubic-bezier(.2,.9,.25,1);
+    }
+    button:active, a:active, select:active { transform: scale(.96); }
+    button, a, select { touch-action: manipulation; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
     }
 
     body [class*=" bg-slate-"], body [class^="bg-slate-"] { background-color:var(--slate-bg); }
     body [class*="border-slate-"] { border-color:var(--line); }
 
-    /* 輸入框統一 16px，避免 iOS Safari 聚焦自動放大頁面 */
     body input, body select, body textarea {
-      font-size: 16px !important;
+      font-size: 16px;
       border-radius:12px; color:var(--ink); background-color:var(--input-bg); border:1px solid var(--input-border);
     }
     body input:focus, body select:focus, body textarea:focus { outline:none; box-shadow:0 0 0 3px var(--tint-accent-b); }
-    button, a, select { touch-action: manipulation; }
 
     #auth-screen {
-      min-height: 100dvh;
-      width: 100%;
-      background:
-        radial-gradient(65% 45% at 20% 15%, rgba(56,189,248,.22), transparent 65%),
-        radial-gradient(60% 50% at 85% 85%, rgba(99,102,241,.22), transparent 65%),
-        linear-gradient(160deg, #1b2436 0%, #243047 55%, #1c263b 100%);
+      min-height: 100dvh; width: 100%;
+      background: linear-gradient(160deg, #1b2436 0%, #243047 55%, #1c263b 100%);
       color: #f8fafc;
     }
     #auth-screen .auth-panel {
-      background: rgba(34, 45, 66, 0.72);
-      -webkit-backdrop-filter: blur(28px) saturate(160%);
-      backdrop-filter: blur(28px) saturate(160%);
+      background: rgba(34, 45, 66, 0.85);
       border: 1px solid rgba(148, 163, 184, 0.25);
       box-shadow: 0 20px 50px rgba(10, 15, 28, 0.35);
     }
 
-    .safe-top-header { padding-top:calc(env(safe-area-inset-top,0px) + 0.75rem); }
+    .safe-top-header { padding-top:calc(env(safe-area-inset-top,0px) + 0.65rem); }
     body header.sticky {
       background-color:var(--header-bg);
-      -webkit-backdrop-filter:blur(24px) saturate(170%); backdrop-filter:blur(24px) saturate(170%);
+      -webkit-backdrop-filter:blur(20px) saturate(160%); backdrop-filter:blur(20px) saturate(160%);
       border-bottom:1px solid var(--line);
     }
 
     body nav.fixed {
-      left:14px; right:14px; bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
-      padding:6px 10px; border-radius:26px; border:1px solid var(--nav-border);
+      left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+      padding:4px 8px; border-radius:26px; border:1px solid var(--nav-border);
       background-color:var(--nav-bg);
-      -webkit-backdrop-filter:blur(28px) saturate(180%); backdrop-filter:blur(28px) saturate(180%);
+      -webkit-backdrop-filter:blur(24px) saturate(170%); backdrop-filter:blur(24px) saturate(170%);
       box-shadow:inset 0 1px 0 var(--card-hi), var(--nav-shadow);
     }
-    #app { padding-bottom:6.5rem; }
+    #app { padding-bottom:6.8rem; }
+
+    .tabbar-item {
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+      padding:6px 4px; border-radius:18px; font-size:12px; font-weight:700; color:var(--ink-3);
+    }
+    .tabbar-item.active { color:var(--accent); background:var(--tint-accent); }
 
     .modal-sheet {
       background-color:var(--glass-strong);
-      -webkit-backdrop-filter:blur(40px) saturate(170%); backdrop-filter:blur(40px) saturate(170%);
-      border-radius:1.75rem 1.75rem 0 0; animation:sheetUp .28s cubic-bezier(.2,.9,.25,1);
+      -webkit-backdrop-filter:blur(32px) saturate(170%); backdrop-filter:blur(32px) saturate(170%);
+      border-radius:1.75rem 1.75rem 0 0; animation:sheetUp .24s cubic-bezier(.2,.9,.25,1);
       padding-bottom:calc(env(safe-area-inset-bottom,0px) + 1.25rem);
     }
     @media (min-width:640px) { .modal-sheet { border-radius:1.75rem; } }
 
     #toast {
       position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,0px) + 78px); transform:translate(-50%,12px);
-      z-index:95; padding:8px 14px; border-radius:999px; font-size:12px; font-weight:600; color:var(--ink);
+      z-index:95; padding:9px 16px; border-radius:999px; font-size:13px; font-weight:700; color:var(--ink);
       background:var(--glass-strong); border:1px solid var(--card-border); box-shadow:var(--shadow);
-      opacity:0; pointer-events:none; transition:opacity .25s,transform .25s; white-space:nowrap; max-width:92vw; overflow:hidden; text-overflow:ellipsis;
+      opacity:0; pointer-events:none; transition:opacity .22s,transform .22s; white-space:nowrap; max-width:94vw;
     }
-    #toast.show { opacity:1; transform:translate(-50%,0); }
+    #toast.show { opacity:1; transform:translate(-50%,0); pointer-events:auto; }
     #toast.err { color:var(--red); border-color:var(--tint-rose-b); }
 
-    .tab-content:not(.hidden) { animation:fadeUp .28s cubic-bezier(.2,.9,.25,1); }
+    .tab-content:not(.hidden) { animation:fadeUp .22s cubic-bezier(.2,.9,.25,1); }
     .tab-content.hidden { display:none !important; }
     @keyframes fadeUp { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:none;} }
     @keyframes sheetUp { from{transform:translateY(28px);opacity:0;} to{transform:none;opacity:1;} }
 
-    .cur-chip { font-size:9px; line-height:1; padding:2px 5px; border-radius:6px; border:1px solid currentColor; font-weight:700; }
+    .cur-chip { font-size:12px; line-height:1.1; padding:2px 6px; border-radius:6px; border:1px solid currentColor; font-weight:700; }
     .cur-TWD { color:var(--chip-twd); } .cur-JPY { color:var(--chip-jpy); } .cur-KRW { color:var(--chip-krw); } .cur-USD { color:var(--chip-usd); }
     #txt-total-salary { font-size:2.1rem; line-height:1.05; font-weight:800; }
 
+    .skeleton-line {
+      height: 16px; border-radius: 8px;
+      background: linear-gradient(90deg, var(--slate-bg) 25%, var(--line) 50%, var(--slate-bg) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+    }
+    @keyframes shimmer { 0%{background-position:200% 0;} 100%{background-position:-200% 0;} }
+
     @media (min-width:1024px) {
       body #app { max-width:1280px; padding-bottom:3rem; }
-      body nav.fixed { left:auto; right:24px; bottom:24px; width:auto; max-width:none; }
+      body nav.fixed { left:auto; right:24px; bottom:24px; width:380px; }
       #assets-list { display:block; column-count:3; column-gap:12px; }
       #assets-list > * { break-inside:avoid; margin:0 0 12px !important; }
-      #tab-salary, #tab-luna { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start; }
     }
   </style>
 </head>
@@ -224,7 +262,7 @@
         <h1 class="text-2xl font-bold tracking-tight text-slate-50">財務與記帳管家</h1>
         <p class="text-sm text-slate-300 mt-1.5">以記帳為核心 · 共同帳本 · 資產總覽</p>
       </div>
-      <button id="btn-login" class="w-full py-3.5 px-4 btn-soft-accent font-semibold rounded-2xl flex items-center justify-center gap-3">
+      <button id="btn-login" class="w-full py-3.5 px-4 btn-primary font-semibold rounded-2xl flex items-center justify-center gap-3">
         <i data-lucide="lock" class="w-5 h-5"></i>
         <span>使用 Google 帳號登入</span>
       </button>
@@ -237,184 +275,263 @@
 
     <header class="sticky top-0 w-full z-40 px-3 pb-2 safe-top-header">
       <div class="flex items-center justify-between gap-2">
-        <div class="flex items-center gap-1.5 min-w-0">
-          <select id="select-month" aria-label="選擇月份" class="font-bold rounded-xl px-2 py-1 shrink-0"></select>
-          <select id="select-book" aria-label="切換帳本" class="font-semibold rounded-xl px-2 py-1 min-w-0 truncate" title="切換個人或共同帳本">
-            <option value="personal">個人帳本</option>
-          </select>
+        <div class="flex items-center gap-1">
+          <button id="btn-prev-month" aria-label="上一個月" class="w-10 h-10 rounded-xl btn-secondary flex items-center justify-center">
+            <i data-lucide="chevron-left" class="w-5 h-5"></i>
+          </button>
+          <div class="px-2 text-center min-w-[92px]">
+            <div id="txt-current-month" class="text-base font-extrabold tracking-tight">載入中...</div>
+          </div>
+          <button id="btn-next-month" aria-label="下一個月" class="w-10 h-10 rounded-xl btn-secondary flex items-center justify-center">
+            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+          </button>
+          <select id="select-month" aria-label="選擇月份" class="hidden"></select>
         </div>
 
-        <div class="flex items-center gap-1.5 shrink-0">
-          <button id="btn-quick-tx" class="px-3 py-1.5 btn-soft-accent text-xs font-bold rounded-xl flex items-center gap-1">
-            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i><span>記帳</span>
-          </button>
-          <button id="btn-toggle-tools" class="px-2.5 py-1.5 btn-soft-dark text-xs font-semibold rounded-xl flex items-center gap-1" aria-expanded="false">
-            <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i><span>工具</span>
-          </button>
-        </div>
-      </div>
-
-      <div id="top-tools-drawer" class="hidden mt-2 p-2.5 rounded-2xl glass-card grid grid-cols-3 gap-1.5 text-xs">
-        <button id="btn-add-month" class="p-2 rounded-xl btn-soft-dark flex items-center justify-center gap-1.5">
-          <i data-lucide="calendar-plus" class="w-3.5 h-3.5"></i><span>新增月份</span>
+        <button id="btn-book-picker" class="px-3 h-10 rounded-xl btn-secondary text-sm font-bold flex items-center gap-1.5 max-w-[165px]">
+          <i data-lucide="book-open" class="w-4 h-4 text-cyan-400 shrink-0"></i>
+          <span id="txt-active-book" class="truncate">個人帳本</span>
+          <i data-lucide="chevrons-up-down" class="w-3.5 h-3.5 opacity-60 shrink-0"></i>
         </button>
-        <button id="btn-sync-sheet" class="p-2 rounded-xl btn-soft-dark flex items-center justify-center gap-1.5">
-          <i data-lucide="cloud-upload" class="w-3.5 h-3.5"></i><span>同步 Sheet</span>
-        </button>
-        <button id="btn-open-manage" class="p-2 rounded-xl btn-soft-dark flex items-center justify-center gap-1.5">
-          <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i><span>分類/帳本</span>
-        </button>
-        <button id="btn-theme" class="p-2 rounded-xl btn-soft-dark flex items-center justify-center gap-1.5">
-          <i data-lucide="monitor" class="w-3.5 h-3.5"></i><span>切換主題</span>
-        </button>
-        <button id="btn-logout" class="col-span-2 p-2 rounded-xl btn-soft-dark flex items-center justify-center gap-1.5 text-rose-300">
-          <i data-lucide="log-out" class="w-3.5 h-3.5"></i><span>登出帳號</span>
-        </button>
+        <select id="select-book" aria-label="切換帳本" class="hidden"><option value="personal">個人帳本</option></select>
       </div>
     </header>
 
-    <main class="px-3 py-2 space-y-2.5">
+    <main class="px-3 py-2 space-y-3">
 
-      <!-- 第 1 頁：記帳明細與專案預算 -->
+      <!-- 分頁 1：明細 -->
       <section id="tab-ledger" class="tab-content space-y-2.5">
-        <div class="glass-card p-3.5 space-y-3">
-          <div class="flex items-center justify-between gap-2">
+        <div class="glass-card p-4 space-y-2.5">
+          <div class="flex items-baseline justify-between gap-2">
             <div>
-              <div class="text-xs text-slate-400" id="ledger-book-subtitle">目前帳本：個人帳本</div>
-              <div class="text-lg font-extrabold mt-0.5" id="txt-month-summary">支出 NT$ 0 · 收入 NT$ 0</div>
+              <div class="text-xs text-slate-400 font-semibold">本月總支出</div>
+              <div class="text-2xl font-extrabold tracking-tight mt-0.5 text-rose-400" id="txt-month-expense">
+                <div class="skeleton-line w-32 mt-1"></div>
+              </div>
             </div>
-            <select id="filter-tx-type" aria-label="篩選記錄類型" class="px-2 py-1 shrink-0">
-              <option value="ALL">全部類型</option>
-              <option value="支出">支出</option>
-              <option value="收入">收入</option>
-              <option value="轉帳">轉帳</option>
-              <option value="轉出">轉出</option>
-              <option value="轉入">轉入</option>
-              <option value="應收款項">應收款項</option>
-              <option value="應付款項">應付款項</option>
-              <option value="餘額調整">餘額調整</option>
-              <option value="退款">退款</option>
-            </select>
+            <div class="text-right text-xs space-y-0.5">
+              <div class="text-slate-400">收入 <span class="font-bold text-emerald-400" id="txt-month-income">NT$ 0</span></div>
+              <div class="text-slate-400">結餘 <span class="font-bold" id="txt-month-net">NT$ 0</span></div>
+            </div>
           </div>
 
           <div id="shared-balance-bar" class="hidden text-xs p-2.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-between">
             <span id="txt-shared-settlement">共同帳本分攤統計載入中...</span>
-            <span class="text-[11px] text-indigo-400 font-semibold">共同帳本</span>
+            <span class="text-xs text-indigo-400 font-semibold">共同帳本</span>
           </div>
 
           <div id="project-budget-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+
+          <div class="space-y-2 pt-1">
+            <div class="relative">
+              <input type="search" id="inp-tx-search" class="w-full pl-9 pr-3 py-2" placeholder="搜尋名稱、類別、商家或備註...">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+            </div>
+            <div id="tx-type-chips" class="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs">
+              <button data-ftype="ALL" class="ftype-chip shrink-0 px-3 py-1.5 rounded-full btn-primary font-bold">全部</button>
+              <button data-ftype="支出" class="ftype-chip shrink-0 px-3 py-1.5 rounded-full btn-secondary font-semibold">支出</button>
+              <button data-ftype="收入" class="ftype-chip shrink-0 px-3 py-1.5 rounded-full btn-secondary font-semibold">收入</button>
+              <button data-ftype="轉帳" class="ftype-chip shrink-0 px-3 py-1.5 rounded-full btn-secondary font-semibold">轉帳</button>
+              <button data-ftype="退款" class="ftype-chip shrink-0 px-3 py-1.5 rounded-full btn-secondary font-semibold">退款</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex justify-between items-center px-1">
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">交易明細（左右滑動編輯 / 刪除）</h3>
+            <span class="text-xs text-slate-400" id="txt-tx-count">0 筆</span>
+          </div>
+          <div id="tx-list" class="space-y-2">
+            <div class="glass-card p-3.5 space-y-2">
+              <div class="skeleton-line w-24"></div>
+              <div class="skeleton-line w-full h-10"></div>
+              <div class="skeleton-line w-full h-10"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 分頁 2：統計圖表 -->
+      <section id="tab-stats" class="tab-content hidden space-y-3">
+        <div class="glass-card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold">本月支出類別分佈</h3>
+            <span class="text-xs text-slate-400" id="stats-cat-total">NT$ 0</span>
+          </div>
+          <div id="chart-category-donut" class="flex flex-col sm:flex-row items-center gap-4"></div>
+        </div>
+
+        <div class="glass-card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold">近 6 個月收支趨勢</h3>
+            <span class="text-xs text-slate-400">支出 vs 收入</span>
+          </div>
+          <div id="chart-monthly-bars"></div>
+        </div>
+
+        <div class="glass-card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold">淨資產走勢（現值計）</h3>
+            <span class="text-xs text-cyan-400 font-bold" id="stats-nw-latest">NT$ 0</span>
+          </div>
+          <div id="chart-networth-line"></div>
+        </div>
+      </section>
+
+      <!-- 分頁 3：資產 -->
+      <section id="tab-assets" class="tab-content hidden space-y-2.5">
+        <div class="glass-card p-1.5 grid grid-cols-4 gap-1 text-xs font-bold">
+          <button data-asub="sub-overview" class="asset-sub-btn py-2 rounded-xl btn-primary">帳戶總覽</button>
+          <button data-asub="sub-salary" class="asset-sub-btn py-2 rounded-xl btn-secondary">薪水分配</button>
+          <button data-asub="sub-cardgap" class="asset-sub-btn py-2 rounded-xl btn-secondary">卡費補水</button>
+          <button data-asub="sub-luna" class="asset-sub-btn py-2 rounded-xl btn-secondary">寵物房貸</button>
+        </div>
+
+        <div id="sub-overview" class="asset-sub-panel space-y-2.5">
+          <div class="glass-card p-3.5 space-y-3">
+            <div class="flex justify-between items-center flex-wrap gap-2">
+              <span class="text-xs text-slate-400 font-semibold uppercase">淨資產總覽 (台幣計價)</span>
+              <div class="flex items-center gap-1.5">
+                <button id="btn-add-account-modal" class="text-xs btn-secondary px-2.5 py-1.5 rounded-xl font-semibold">+ 新增帳戶</button>
+                <button id="btn-edit-accounts" class="text-xs btn-secondary px-2.5 py-1.5 rounded-xl font-semibold">編輯餘額</button>
+                <button id="btn-open-stock-modal" class="text-xs btn-primary px-2.5 py-1.5 rounded-xl font-semibold">持股管理</button>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <div class="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-2xl">
+                <div class="text-xs text-cyan-400 font-medium">① 淨資產 (現值計)</div>
+                <div class="text-lg font-extrabold mt-0.5" id="txt-net-worth-market">NT$ 0</div>
+              </div>
+              <div class="bg-purple-500/10 border border-purple-500/20 p-3 rounded-2xl">
+                <div class="text-xs text-purple-400 font-medium">② 淨資產 (成本計)</div>
+                <div class="text-lg font-extrabold mt-0.5" id="txt-net-worth-cost">NT$ 0</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 pt-2 border-t text-xs text-center">
+              <div class="p-2 rounded-xl bg-slate-800/40">
+                <div class="text-slate-400">證券現值</div>
+                <div class="font-bold text-cyan-400 mt-0.5" id="txt-sec-market-val">$0</div>
+              </div>
+              <div class="p-2 rounded-xl bg-slate-800/40">
+                <div class="text-slate-400">證券成本</div>
+                <div class="font-bold mt-0.5" id="txt-sec-cost-val">$0</div>
+              </div>
+              <div class="p-2 rounded-xl bg-slate-800/40">
+                <div class="text-slate-400">未實現損益</div>
+                <div class="font-bold mt-0.5" id="txt-sec-pl">$0</div>
+              </div>
+            </div>
+            <div class="text-xs text-slate-400" id="txt-fx-rates"></div>
+          </div>
+          <div id="assets-list" class="space-y-2.5"></div>
+        </div>
+
+        <div id="sub-salary" class="asset-sub-panel hidden space-y-2.5">
+          <div class="glass-card p-3.5 space-y-3">
+            <div class="flex justify-between items-start">
+              <span class="text-xs font-medium text-slate-400 uppercase">實發總薪資 (扣完勞退)</span>
+              <button id="btn-edit-salary" class="text-xs btn-secondary px-2.5 py-1.5 rounded-xl font-semibold">編輯本月薪資</button>
+            </div>
+            <div class="flex items-baseline gap-1">
+              <span class="text-xs text-slate-400">NT$</span>
+              <span id="txt-total-salary">0</span>
+            </div>
+            <div class="grid grid-cols-3 gap-2 pt-3 border-t text-xs">
+              <div><div class="text-slate-400">應發本薪</div><div id="txt-base-salary" class="font-semibold mt-0.5">0</div></div>
+              <div><div class="text-slate-400">勞退扣除</div><div id="txt-pension" class="font-semibold text-rose-400 mt-0.5">-0</div></div>
+              <div><div class="text-slate-400">加班 / 補發</div><div id="txt-overtime" class="font-semibold text-emerald-400 mt-0.5">+0</div></div>
+            </div>
+          </div>
+
+          <div class="glass-card p-3.5 space-y-2.5 text-sm">
+            <h3 class="text-sm font-semibold text-slate-300">支出分配與活存儲蓄</h3>
+            <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">1. 每月日常花費</span><span id="txt-daily-expense" class="font-semibold">16,000</span></div>
+            <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">2. 訂閱費用</span><span id="txt-subscription" class="font-semibold">2,077</span></div>
+            <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">3. 房貸扣款</span><span id="txt-mortgage" class="font-semibold">11,168</span></div>
+            <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">4. 投資扣款</span><span id="txt-invest" class="font-semibold">0</span></div>
+            <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">5. 寵物每月基金</span><span id="txt-luna-deposit" class="font-semibold">3,000</span></div>
+            <div class="flex justify-between pt-1"><span class="font-bold text-cyan-400">本月剩餘活存</span><span id="txt-savings" class="font-extrabold text-lg text-emerald-400">0</span></div>
+          </div>
+        </div>
+
+        <div id="sub-cardgap" class="asset-sub-panel hidden space-y-2.5">
+          <div class="glass-card p-3.5 space-y-3">
+            <h3 class="text-sm font-semibold">信用卡扣款帳戶「補水」試算</h3>
+            <div id="card-gap-list" class="space-y-2.5"></div>
+          </div>
+        </div>
+
+        <div id="sub-luna" class="asset-sub-panel hidden space-y-2.5">
+          <div class="glass-card p-3.5 space-y-2.5">
+            <div class="flex justify-between items-center">
+              <div><h3 class="text-base font-bold">寵物專用基金 (嚕哪)</h3><p class="text-xs text-slate-400">國泰嚕哪基金</p></div>
+              <div class="text-xl font-bold text-pink-400" id="txt-luna-balance">NT$ 0</div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
+              <div><span class="text-slate-400">本月存入</span><input type="number" inputmode="decimal" id="in-pet-deposit" class="w-full p-2 mt-1"></div>
+              <div><span class="text-slate-400">本月結餘</span><input type="number" inputmode="decimal" id="in-pet-balance" class="w-full p-2 mt-1"></div>
+            </div>
+            <button id="btn-apply-pet" class="w-full py-2.5 rounded-xl btn-primary font-semibold text-xs">套用寵物基金</button>
+          </div>
+
+          <div class="glass-card p-3.5 space-y-2.5">
+            <div class="flex justify-between items-center">
+              <div><h3 class="text-base font-bold">房貸專戶扣款</h3><p class="text-xs text-slate-400">彰化銀行(房貸)</p></div>
+              <div class="text-xl font-bold text-blue-400" id="txt-mortgage-balance">NT$ 0</div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
+              <div><span class="text-slate-400">本月應繳</span><input type="number" inputmode="decimal" id="in-mortgage-payment" class="w-full p-2 mt-1"></div>
+              <div><span class="text-slate-400">專戶結餘</span><input type="number" inputmode="decimal" id="in-mortgage-balance" class="w-full p-2 mt-1"></div>
+            </div>
+            <button id="btn-apply-mortgage" class="w-full py-2.5 rounded-xl btn-primary font-semibold text-xs">套用房貸專戶</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 分頁 4：更多 -->
+      <section id="tab-more" class="tab-content hidden space-y-3 text-sm">
+        <div class="glass-card p-3.5 space-y-2">
+          <div class="text-xs font-bold text-slate-400 uppercase px-1">自動化與月結</div>
+          <button id="more-open-drafts" class="w-full p-3 rounded-2xl btn-secondary flex items-center justify-between font-semibold">
+            <span class="flex items-center gap-2.5"><i data-lucide="bell" class="w-4 h-4 text-amber-400"></i> iOS 捷徑通知草稿箱</span>
+            <span id="more-draft-badge" class="hidden px-2 py-0.5 rounded-full bg-rose-500 text-white text-xs font-bold">0</span>
+          </button>
+          <button id="more-open-wizard" class="w-full p-3 rounded-2xl btn-secondary flex items-center justify-between font-semibold">
+            <span class="flex items-center gap-2.5"><i data-lucide="clipboard-check" class="w-4 h-4 text-purple-400"></i> 每月薪資與資產月結精靈</span>
+            <i data-lucide="chevron-right" class="w-4 h-4 opacity-60"></i>
+          </button>
         </div>
 
         <div class="glass-card p-3.5 space-y-2">
-          <div class="flex justify-between items-center">
-            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">交易明細</h3>
-            <span class="text-[11px] text-slate-400" id="txt-tx-count">0 筆</span>
-          </div>
-          <div id="tx-list" class="divide-y divide-slate-800/40"></div>
-        </div>
-      </section>
-
-      <!-- 第 2 頁：資產總覽 -->
-      <section id="tab-assets" class="tab-content hidden space-y-2.5">
-        <div class="glass-card p-3.5 space-y-3">
-          <div class="flex justify-between items-center flex-wrap gap-2">
-            <span class="text-xs text-slate-400 font-semibold uppercase">淨資產總覽 (台幣計價)</span>
-            <div class="flex items-center gap-1.5">
-              <button id="btn-add-account-modal" class="text-xs btn-soft-dark px-2.5 py-1 rounded-xl font-medium">+ 新增帳戶</button>
-              <button id="btn-edit-accounts" class="text-xs btn-soft-dark px-2.5 py-1 rounded-xl font-medium">編輯餘額</button>
-              <button id="btn-open-stock-modal" class="text-xs btn-soft-accent px-2.5 py-1 rounded-xl font-medium">持股管理</button>
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-2.5">
-            <div class="bg-cyan-500/10 border border-cyan-500/20 p-3 rounded-2xl">
-              <div class="text-[11px] text-cyan-400 font-medium">① 淨資產 (現值計)</div>
-              <div class="text-lg font-extrabold mt-0.5" id="txt-net-worth-market">NT$ 0</div>
-            </div>
-            <div class="bg-purple-500/10 border border-purple-500/20 p-3 rounded-2xl">
-              <div class="text-[11px] text-purple-400 font-medium">② 淨資產 (成本計)</div>
-              <div class="text-lg font-extrabold mt-0.5" id="txt-net-worth-cost">NT$ 0</div>
-            </div>
-          </div>
-          <div class="grid grid-cols-3 gap-2 pt-2 border-t text-[11px] text-center">
-            <div class="p-2 rounded-xl bg-slate-800/40">
-              <div class="text-slate-400 text-[10px]">證券現值</div>
-              <div class="font-bold text-cyan-400 mt-0.5" id="txt-sec-market-val">$0</div>
-            </div>
-            <div class="p-2 rounded-xl bg-slate-800/40">
-              <div class="text-slate-400 text-[10px]">證券成本</div>
-              <div class="font-bold mt-0.5" id="txt-sec-cost-val">$0</div>
-            </div>
-            <div class="p-2 rounded-xl bg-slate-800/40">
-              <div class="text-slate-400 text-[10px]">未實現損益</div>
-              <div class="font-bold mt-0.5" id="txt-sec-pl">$0</div>
-            </div>
-          </div>
-          <div class="text-[10px] text-slate-400" id="txt-fx-rates"></div>
-        </div>
-        <div id="assets-list" class="space-y-2.5"></div>
-      </section>
-
-      <!-- 第 3 頁：薪水分配 -->
-      <section id="tab-salary" class="tab-content hidden space-y-2.5">
-        <div class="glass-card p-3.5 space-y-3">
-          <div class="flex justify-between items-start">
-            <span class="text-xs font-medium text-slate-400 uppercase">實發總薪資 (扣完勞退)</span>
-            <button id="btn-edit-salary" class="text-xs btn-soft-dark px-2.5 py-1 rounded-lg font-medium">編輯本月薪資</button>
-          </div>
-          <div class="flex items-baseline gap-1">
-            <span class="text-xs text-slate-400">NT$</span>
-            <span id="txt-total-salary">0</span>
-          </div>
-          <div class="grid grid-cols-3 gap-2 pt-3 border-t text-xs">
-            <div><div class="text-slate-400">應發本薪</div><div id="txt-base-salary" class="font-semibold mt-0.5">0</div></div>
-            <div><div class="text-slate-400">勞退扣除</div><div id="txt-pension" class="font-semibold text-rose-400 mt-0.5">-0</div></div>
-            <div><div class="text-slate-400">加班 / 補發</div><div id="txt-overtime" class="font-semibold text-emerald-400 mt-0.5">+0</div></div>
-          </div>
+          <div class="text-xs font-bold text-slate-400 uppercase px-1">資料與備份</div>
+          <button id="more-open-csv" class="w-full p-3 rounded-2xl btn-secondary flex items-center justify-between font-semibold">
+            <span class="flex items-center gap-2.5"><i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i> MOZE 4.0 CSV 匯入 / 匯出備份</span>
+            <i data-lucide="chevron-right" class="w-4 h-4 opacity-60"></i>
+          </button>
+          <button id="btn-sync-sheet" class="w-full p-3 rounded-2xl btn-secondary flex items-center justify-between font-semibold">
+            <span class="flex items-center gap-2.5"><i data-lucide="cloud-upload" class="w-4 h-4 text-cyan-400"></i> 同步明細至個人 Google Sheet</span>
+            <i data-lucide="chevron-right" class="w-4 h-4 opacity-60"></i>
+          </button>
+          <button id="btn-add-month" class="w-full p-3 rounded-2xl btn-secondary flex items-center justify-between font-semibold">
+            <span class="flex items-center gap-2.5"><i data-lucide="calendar-plus" class="w-4 h-4 text-blue-400"></i> 新增下一個月份欄位</span>
+            <i data-lucide="chevron-right" class="w-4 h-4 opacity-60"></i>
+          </button>
         </div>
 
-        <div class="glass-card p-3.5 space-y-2.5 text-sm">
-          <h3 class="text-sm font-semibold text-slate-300">支出分配與活存儲蓄</h3>
-          <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">1. 每月日常花費</span><span id="txt-daily-expense" class="font-semibold">16,000</span></div>
-          <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">2. 訂閱費用</span><span id="txt-subscription" class="font-semibold">2,077</span></div>
-          <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">3. 房貸扣款</span><span id="txt-mortgage" class="font-semibold">11,168</span></div>
-          <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">4. 投資扣款</span><span id="txt-invest" class="font-semibold">0</span></div>
-          <div class="flex justify-between py-1.5 border-b"><span class="text-slate-400">5. 寵物每月基金</span><span id="txt-luna-deposit" class="font-semibold">3,000</span></div>
-          <div class="flex justify-between pt-1"><span class="font-bold text-cyan-400">本月剩餘活存</span><span id="txt-savings" class="font-extrabold text-lg text-emerald-400">0</span></div>
-        </div>
-      </section>
-
-      <!-- 第 4 頁：卡費補水 -->
-      <section id="tab-card-gap" class="tab-content hidden space-y-2.5">
-        <div class="glass-card p-3.5 space-y-3">
-          <h3 class="text-sm font-semibold">信用卡扣款帳戶「補水」試算</h3>
-          <div id="card-gap-list" class="space-y-2.5"></div>
-        </div>
-      </section>
-
-      <!-- 第 5 頁：寵物房貸 -->
-      <section id="tab-luna" class="tab-content hidden space-y-2.5">
-        <div class="glass-card p-3.5 space-y-2.5">
-          <div class="flex justify-between items-center">
-            <div><h3 class="text-base font-bold">寵物專用基金 (嚕哪)</h3><p class="text-xs text-slate-400">國泰嚕哪基金</p></div>
-            <div class="text-xl font-bold text-pink-400" id="txt-luna-balance">NT$ 0</div>
-          </div>
-          <div class="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
-            <div><span class="text-slate-400">本月存入</span><input type="number" inputmode="decimal" id="in-pet-deposit" class="w-full p-2 mt-1"></div>
-            <div><span class="text-slate-400">本月結餘</span><input type="number" inputmode="decimal" id="in-pet-balance" class="w-full p-2 mt-1"></div>
-          </div>
-          <button id="btn-apply-pet" class="w-full py-2 rounded-xl btn-soft-dark font-semibold text-xs">套用寵物基金</button>
-        </div>
-
-        <div class="glass-card p-3.5 space-y-2.5">
-          <div class="flex justify-between items-center">
-            <div><h3 class="text-base font-bold">房貸專戶扣款</h3><p class="text-xs text-slate-400">彰化銀行(房貸)</p></div>
-            <div class="text-xl font-bold text-blue-400" id="txt-mortgage-balance">NT$ 0</div>
-          </div>
-          <div class="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
-            <div><span class="text-slate-400">本月應繳</span><input type="number" inputmode="decimal" id="in-mortgage-payment" class="w-full p-2 mt-1"></div>
-            <div><span class="text-slate-400">專戶結餘</span><input type="number" inputmode="decimal" id="in-mortgage-balance" class="w-full p-2 mt-1"></div>
-          </div>
-          <button id="btn-apply-mortgage" class="w-full py-2 rounded-xl btn-soft-dark font-semibold text-xs">套用房貸專戶</button>
+        <div class="glass-card p-3.5 space-y-2">
+          <div class="text-xs font-bold text-slate-400 uppercase px-1">帳本、分類與外觀</div>
+          <button id="btn-open-manage" class="w-full p-3 rounded-2xl btn-secondary flex items-center justify-between font-semibold">
+            <span class="flex items-center gap-2.5"><i data-lucide="sliders-horizontal" class="w-4 h-4 text-indigo-400"></i> 自訂分類・專案預算・共同帳本・GAS 設定</span>
+            <i data-lucide="chevron-right" class="w-4 h-4 opacity-60"></i>
+          </button>
+          <button id="btn-theme" class="w-full p-3 rounded-2xl btn-secondary flex items-center justify-between font-semibold">
+            <span class="flex items-center gap-2.5"><i data-lucide="monitor" class="w-4 h-4"></i> <span>外觀：跟隨系統</span></span>
+            <i data-lucide="refresh-cw" class="w-4 h-4 opacity-60"></i>
+          </button>
+          <button id="btn-logout" class="w-full p-3 rounded-2xl btn-secondary flex items-center justify-between font-semibold text-rose-400">
+            <span class="flex items-center gap-2.5"><i data-lucide="log-out" class="w-4 h-4"></i> 登出 Google 帳號</span>
+          </button>
         </div>
       </section>
 
@@ -422,39 +539,42 @@
 
     <div id="toast"></div>
 
-    <!-- 底部頁面選擇器 -->
-    <div id="page-picker-popover" class="hidden fixed left-3.5 right-3.5 bottom-[calc(env(safe-area-inset-bottom,0px)+68px)] max-w-md mx-auto z-40 glass-card p-3 space-y-1.5 text-xs">
-      <div class="text-[11px] font-bold text-slate-400 px-1">選擇前往的頁面</div>
-      <button class="nav-btn w-full p-2.5 rounded-xl btn-soft-dark flex items-center justify-between" data-tab="tab-ledger">
-        <span class="flex items-center gap-2 font-bold"><i data-lucide="receipt-text" class="w-4 h-4"></i> 記帳明細（主要）</span>
-        <span class="text-[10px] text-cyan-300">第 1 頁</span>
+    <!-- 底部五鍵導覽列 -->
+    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-30 grid grid-cols-5 items-center gap-1">
+      <button type="button" class="tabbar-item active" data-tab="tab-ledger">
+        <i data-lucide="receipt-text" class="w-5 h-5"></i>
+        <span>明細</span>
       </button>
-      <div class="grid grid-cols-2 gap-1.5">
-        <button class="nav-btn p-2.5 rounded-xl btn-soft-dark flex items-center gap-2 font-semibold" data-tab="tab-assets">
-          <i data-lucide="layers" class="w-4 h-4"></i> <span>資產總覽</span>
-        </button>
-        <button class="nav-btn p-2.5 rounded-xl btn-soft-dark flex items-center gap-2 font-semibold" data-tab="tab-salary">
-          <i data-lucide="wallet" class="w-4 h-4"></i> <span>薪水分配</span>
-        </button>
-        <button class="nav-btn p-2.5 rounded-xl btn-soft-dark flex items-center gap-2 font-semibold" data-tab="tab-card-gap">
-          <i data-lucide="credit-card" class="w-4 h-4"></i> <span>卡費補水</span>
-        </button>
-        <button class="nav-btn p-2.5 rounded-xl btn-soft-dark flex items-center gap-2 font-semibold" data-tab="tab-luna">
-          <i data-lucide="heart" class="w-4 h-4"></i> <span>寵物房貸</span>
+      <button type="button" class="tabbar-item" data-tab="tab-stats">
+        <i data-lucide="pie-chart" class="w-5 h-5"></i>
+        <span>統計</span>
+      </button>
+      <div class="flex items-center justify-center">
+        <button id="qe-center-fan-btn" type="button" title="快速記帳（長按展開常用扇形）" aria-label="快速記帳">
+          <i data-lucide="plus" class="w-6 h-6"></i>
         </button>
       </div>
-    </div>
-
-    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto z-30 flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2 text-xs font-bold pl-1">
-        <i data-lucide="compass" class="w-4 h-4 text-cyan-400"></i>
-        <span id="current-page-label">目前：記帳明細</span>
-      </div>
-      <button id="btn-toggle-pages" class="px-3.5 py-2 rounded-2xl btn-soft-accent text-xs font-bold flex items-center gap-1.5" aria-expanded="false">
-        <i data-lucide="chevrons-up" class="w-4 h-4"></i>
-        <span>切換頁面</span>
+      <button type="button" class="tabbar-item" data-tab="tab-assets">
+        <i data-lucide="layers" class="w-5 h-5"></i>
+        <span>資產</span>
+      </button>
+      <button type="button" class="tabbar-item relative" data-tab="tab-more">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+        <span>更多</span>
+        <span id="nav-draft-dot" class="hidden absolute top-1.5 right-4 w-2 h-2 rounded-full bg-rose-500"></span>
       </button>
     </nav>
+  </div>
+
+  <!-- 帳本選擇 Sheet -->
+  <div id="book-picker-modal" role="dialog" aria-modal="true" class="hidden fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="modal-sheet w-full max-w-md p-5 space-y-2.5 text-sm">
+      <div class="flex justify-between items-center border-b pb-2.5">
+        <h3 class="text-base font-bold">選擇記帳帳本</h3>
+        <button aria-label="關閉視窗" onclick="document.getElementById('book-picker-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div id="book-picker-list" class="space-y-2"></div>
+    </div>
   </div>
 
   <!-- 管理中心彈窗 -->
@@ -468,13 +588,13 @@
         <div class="font-bold">自訂類別（新增 / 刪除）</div>
         <div class="flex gap-1.5">
           <input type="text" id="new-main-cat" class="flex-1 p-2" placeholder="新主類別名稱">
-          <button id="btn-add-main-cat" class="px-3 py-1.5 btn-soft-dark rounded-xl font-semibold">新增主類</button>
+          <button id="btn-add-main-cat" class="px-3 py-1.5 btn-primary rounded-xl font-semibold">新增主類</button>
         </div>
         <div class="flex gap-1.5">
           <select id="manage-main-cat-select" aria-label="選擇主類別" class="p-2"></select>
           <input type="text" id="new-sub-cat" class="flex-1 p-2" placeholder="新子類別名稱">
-          <button id="btn-add-sub-cat" class="px-3 py-1.5 btn-soft-dark rounded-xl font-semibold">新增子類</button>
-          <button id="btn-del-main-cat" class="px-2.5 py-1.5 btn-soft-dark rounded-xl text-rose-300">刪主類</button>
+          <button id="btn-add-sub-cat" class="px-3 py-1.5 btn-primary rounded-xl font-semibold">新增子類</button>
+          <button id="btn-del-main-cat" class="px-2.5 py-1.5 btn-secondary rounded-xl text-rose-400">刪主類</button>
         </div>
         <div id="sub-cat-chips" class="flex flex-wrap gap-1.5 pt-1"></div>
       </div>
@@ -483,7 +603,7 @@
         <div class="flex gap-1.5">
           <input type="text" id="new-project-name" class="flex-1 p-2" placeholder="專案名稱">
           <input type="number" inputmode="decimal" id="new-project-budget" class="w-28 p-2" placeholder="預算金額">
-          <button id="btn-add-project" class="px-3 py-1.5 btn-soft-dark rounded-xl font-semibold">新增</button>
+          <button id="btn-add-project" class="px-3 py-1.5 btn-primary rounded-xl font-semibold">新增</button>
         </div>
         <div id="manage-project-list" class="space-y-1"></div>
       </div>
@@ -491,12 +611,12 @@
         <div class="font-bold">共同帳本（邀請另一半或家人 Google 帳號）</div>
         <div class="flex gap-1.5">
           <input type="text" id="new-book-title" class="flex-1 p-2" placeholder="共同帳本名稱">
-          <button id="btn-create-book" class="px-3 py-1.5 btn-soft-dark rounded-xl font-semibold">建立帳本</button>
+          <button id="btn-create-book" class="px-3 py-1.5 btn-primary rounded-xl font-semibold">建立帳本</button>
         </div>
         <div class="flex gap-1.5">
           <select id="invite-book-select" aria-label="選擇共同帳本" class="p-2"></select>
           <input type="email" id="invite-member-email" class="flex-1 p-2" placeholder="輸入對方 Google Email">
-          <button id="btn-invite-member" class="px-3 py-1.5 btn-soft-dark rounded-xl font-semibold">發送邀請</button>
+          <button id="btn-invite-member" class="px-3 py-1.5 btn-primary rounded-xl font-semibold">發送邀請</button>
         </div>
         <div id="my-shared-books-list" class="text-slate-400 space-y-1"></div>
       </div>
@@ -507,11 +627,11 @@
           <span class="text-slate-400">iOS 捷徑專屬 Token</span>
           <div class="flex gap-1.5 mt-1">
             <input type="text" id="cfg-shortcut-token" class="flex-1 p-2 font-mono" readonly>
-            <button id="btn-gen-token" class="px-2.5 py-1.5 btn-soft-dark rounded-xl">重新產生</button>
+            <button id="btn-gen-token" class="px-2.5 py-1.5 btn-secondary rounded-xl">重新產生</button>
           </div>
-          <div class="text-[10px] text-slate-400 mt-1 break-all" id="cfg-uid-display"></div>
+          <div class="text-xs text-slate-400 mt-1 break-all" id="cfg-uid-display"></div>
         </div>
-        <button id="btn-save-profile-cfg" class="w-full py-2.5 btn-soft-accent font-bold rounded-xl">儲存設定</button>
+        <button id="btn-save-profile-cfg" class="w-full py-2.5 btn-primary font-bold rounded-xl">儲存設定</button>
       </div>
     </div>
   </div>
@@ -526,11 +646,11 @@
       <div class="flex gap-2 text-xs">
         <input type="text" id="new-stock-ticker" class="flex-1 p-2 uppercase" placeholder="代號如 2330, 00878">
         <select id="new-stock-target-acc" aria-label="選擇證券帳戶" class="p-2"><option value="國泰證券">國泰證券</option><option value="國泰借券">國泰借券</option><option value="永豐證券">永豐證券</option></select>
-        <button id="btn-add-stock-item" class="px-3 py-1.5 btn-soft-dark rounded-xl font-semibold">新增</button>
+        <button id="btn-add-stock-item" class="px-3 py-1.5 btn-primary rounded-xl font-semibold">新增</button>
       </div>
       <div id="stock-inputs-container" class="space-y-2 text-xs"></div>
       <div class="text-xs font-bold" id="calc-stock-summary"></div>
-      <button id="btn-apply-stocks" class="w-full py-3 btn-soft-accent font-bold rounded-2xl">寫入當月三大證券與成本</button>
+      <button id="btn-apply-stocks" class="w-full py-3 btn-primary font-bold rounded-2xl">寫入當月三大證券與成本</button>
     </div>
   </div>
 
@@ -547,7 +667,7 @@
         <div><span class="text-slate-400">加班 / 補發</span><input type="number" inputmode="decimal" id="in-overtime" class="w-full p-2 mt-1"></div>
         <div><span class="text-slate-400">每月日常花費</span><input type="number" inputmode="decimal" id="in-daily" class="w-full p-2 mt-1"></div>
       </div>
-      <button id="btn-apply-salary" class="w-full py-3 btn-soft-accent font-bold rounded-2xl">套用薪資</button>
+      <button id="btn-apply-salary" class="w-full py-3 btn-primary font-bold rounded-2xl">套用薪資</button>
     </div>
   </div>
 
@@ -559,7 +679,7 @@
         <button aria-label="關閉視窗" onclick="document.getElementById('accounts-modal').classList.add('hidden')" class="text-slate-400 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
       <div id="modal-accounts-inputs" class="space-y-3 text-xs"></div>
-      <button id="btn-apply-accounts" class="w-full py-3 btn-soft-accent font-bold rounded-2xl">套用帳戶金額</button>
+      <button id="btn-apply-accounts" class="w-full py-3 btn-primary font-bold rounded-2xl">套用帳戶金額</button>
     </div>
   </div>
 
@@ -578,7 +698,7 @@
       </div>
       <div><span class="text-slate-400">帳戶名稱</span><input type="text" id="new-acc-name" class="w-full p-2 mt-1"></div>
       <div><span class="text-slate-400">初始/當月金額</span><input type="number" inputmode="decimal" id="new-acc-val" class="w-full p-2 mt-1" value="0"></div>
-      <button id="btn-confirm-add-account" class="w-full py-3 btn-soft-accent font-bold rounded-2xl">確認新增帳戶</button>
+      <button id="btn-confirm-add-account" class="w-full py-3 btn-primary font-bold rounded-2xl">確認新增帳戶</button>
     </div>
   </div>
 
@@ -587,7 +707,7 @@
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
     import {
       initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-      doc, getDoc, setDoc, collection, query, where, getDocs, addDoc, orderBy, onSnapshot
+      doc, getDoc, setDoc, collection, query, where, getDocs, addDoc, onSnapshot
     } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -635,6 +755,7 @@
     let portfolioByMonth = {};
     let categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
     let projects = [];
+    let presetCombos = [];
     let sharedBooks = [];
     let activeBookId = "personal";
     let personalTx = [];
@@ -648,57 +769,100 @@
     }
 
     window.__FINANCE_APP__ = {
-      getState: () => ({ currentUser, userProfile, globalData, hiddenAccounts, portfolioByMonth, categories, projects, sharedBooks, activeBookId, personalTx, sharedTx, forexRates }),
+      getState: () => ({ currentUser, userProfile, globalData, hiddenAccounts, portfolioByMonth, categories, projects, presetCombos, sharedBooks, activeBookId, personalTx, sharedTx, forexRates }),
       reloadAll: async () => { await loadAllCloudData(); },
-      refreshView: () => { renderAll(); }
+      refreshView: () => { renderAll(); },
+      savePresetsCloud: async (newList) => {
+        presetCombos = newList;
+        await savePreferences();
+      }
     };
 
     const selectMonth = document.getElementById("select-month");
     const selectBook = document.getElementById("select-book");
 
-    // Esc 關閉彈窗
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    }
+
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
-        ["manage-modal", "stock-modal", "salary-modal", "accounts-modal", "add-account-modal", "qe-modal", "drafts-modal", "csv-modal", "wizard-modal"].forEach(id => {
+        ["book-picker-modal", "manage-modal", "stock-modal", "salary-modal", "accounts-modal", "add-account-modal", "qe-modal", "drafts-modal", "csv-modal", "wizard-modal"].forEach(id => {
           document.getElementById(id)?.classList.add("hidden");
         });
       }
     });
 
-    const btnToggleTools = document.getElementById("btn-toggle-tools");
-    const topToolsDrawer = document.getElementById("top-tools-drawer");
-    btnToggleTools.addEventListener("click", () => {
-      const open = topToolsDrawer.classList.toggle("hidden");
-      btnToggleTools.setAttribute("aria-expanded", String(!open));
-      if (window.lucide) lucide.createIcons();
-    });
-
-    const btnTogglePages = document.getElementById("btn-toggle-pages");
-    const pagePopover = document.getElementById("page-picker-popover");
-    const pageLabels = {
-      "tab-ledger": "記帳明細",
-      "tab-assets": "資產總覽",
-      "tab-salary": "薪水分配",
-      "tab-card-gap": "卡費補水",
-      "tab-luna": "寵物房貸"
-    };
-
-    btnTogglePages.addEventListener("click", () => {
-      const open = pagePopover.classList.toggle("hidden");
-      btnTogglePages.setAttribute("aria-expanded", String(!open));
-      if (window.lucide) lucide.createIcons();
-    });
-
-    document.querySelectorAll("#page-picker-popover .nav-btn").forEach(btn => {
+    document.querySelectorAll("nav .tabbar-item").forEach(btn => {
       btn.addEventListener("click", () => {
         const target = btn.dataset.tab;
+        if (!target) return;
         document.querySelectorAll(".tab-content").forEach(c => c.classList.add("hidden"));
-        document.getElementById(target).classList.remove("hidden");
-        document.getElementById("current-page-label").textContent = "目前：" + (pageLabels[target] || "記帳明細");
-        pagePopover.classList.add("hidden");
-        btnTogglePages.setAttribute("aria-expanded", "false");
+        document.getElementById(target)?.classList.remove("hidden");
+        document.querySelectorAll("nav .tabbar-item").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
         if (window.lucide) lucide.createIcons();
+        notifyRender();
       });
+    });
+
+    document.querySelectorAll(".asset-sub-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const sub = btn.dataset.asub;
+        document.querySelectorAll(".asset-sub-panel").forEach(p => p.classList.add("hidden"));
+        document.getElementById(sub)?.classList.remove("hidden");
+        document.querySelectorAll(".asset-sub-btn").forEach(b => {
+          b.classList.remove("btn-primary");
+          b.classList.add("btn-secondary");
+        });
+        btn.classList.remove("btn-secondary");
+        btn.classList.add("btn-primary");
+      });
+    });
+
+    function shiftMonth(delta) {
+      const len = selectMonth.options.length;
+      if (!len) return;
+      const cur = parseInt(selectMonth.value || "0", 10);
+      const next = Math.max(0, Math.min(len - 1, cur + delta));
+      if (next !== cur) {
+        selectMonth.value = String(next);
+        updateMonthDisplay();
+        renderAll();
+      }
+    }
+    document.getElementById("btn-prev-month").addEventListener("click", () => shiftMonth(-1));
+    document.getElementById("btn-next-month").addEventListener("click", () => shiftMonth(1));
+
+    function updateMonthDisplay() {
+      const mText = selectMonth.options[selectMonth.selectedIndex]?.text || "115/11";
+      const parts = mText.split("/");
+      const label = parts.length === 2 ? `${parts[0]} 年 ${parts[1]} 月` : mText;
+      document.getElementById("txt-current-month").textContent = label;
+    }
+
+    document.getElementById("btn-book-picker").addEventListener("click", () => {
+      const listEl = document.getElementById("book-picker-list");
+      const items = [{ id: "personal", title: "個人帳本" }, ...sharedBooks.map(b => ({ id: b.id, title: "共同：" + (b.title || "共同帳本") }))];
+      listEl.innerHTML = items.map(it => `
+        <button data-bid="${window.esc(it.id)}" class="pick-book-btn w-full p-3 rounded-2xl flex items-center justify-between font-bold ${it.id === activeBookId ? "btn-primary" : "btn-secondary"}">
+          <span>${window.esc(it.title)}</span>
+          ${it.id === activeBookId ? `<i data-lucide="check" class="w-4 h-4"></i>` : ""}
+        </button>
+      `).join("");
+      listEl.querySelectorAll(".pick-book-btn").forEach(b => {
+        b.addEventListener("click", () => {
+          activeBookId = b.dataset.bid;
+          selectBook.value = activeBookId;
+          document.getElementById("txt-active-book").textContent = activeBookId === "personal"
+            ? "個人帳本"
+            : (sharedBooks.find(x => x.id === activeBookId)?.title || "共同帳本");
+          document.getElementById("book-picker-modal").classList.add("hidden");
+          subscribeSharedTransactions(activeBookId);
+        });
+      });
+      document.getElementById("book-picker-modal").classList.remove("hidden");
+      if (window.lucide) lucide.createIcons();
     });
 
     async function fetchExchangeRates() {
@@ -740,7 +904,7 @@
         fetchExchangeRates().then(() => renderAll());
         await loadAllCloudData();
         if (new URLSearchParams(location.search).get("action") === "add") {
-          document.getElementById("btn-quick-tx")?.click();
+          document.getElementById("qe-center-fan-btn")?.click();
         }
       } else {
         currentUser = null;
@@ -798,6 +962,7 @@
         if (d.portfolioByMonth) portfolioByMonth = d.portfolioByMonth;
         if (d.categories && Object.keys(d.categories).length) categories = d.categories;
         if (Array.isArray(d.projects)) projects = d.projects;
+        if (Array.isArray(d.presetCombos)) presetCombos = d.presetCombos;
       }
 
       let ovSnap = await getDoc(doc(db, "users", uid, "overview", "latest"));
@@ -853,7 +1018,7 @@
 
     async function savePreferences() {
       if (!currentUser) return;
-      const payload = { hiddenAccounts, portfolioByMonth, categories, projects };
+      const payload = { hiddenAccounts, portfolioByMonth, categories, projects, presetCombos };
       await setDoc(doc(db, "users", currentUser.uid, "settings", "preferences"), payload, { merge: true });
     }
 
@@ -877,6 +1042,7 @@
       } else {
         selectMonth.value = String(months.length - 1);
       }
+      updateMonthDisplay();
     }
 
     function populateBookDropdown() {
@@ -888,13 +1054,10 @@
         selectBook.appendChild(opt);
       });
       selectBook.value = activeBookId;
+      document.getElementById("txt-active-book").textContent = activeBookId === "personal"
+        ? "個人帳本"
+        : (sharedBooks.find(x => x.id === activeBookId)?.title || "共同帳本");
     }
-
-    selectMonth.addEventListener("change", () => renderAll());
-    selectBook.addEventListener("change", () => {
-      activeBookId = selectBook.value;
-      subscribeSharedTransactions(activeBookId);
-    });
 
     document.getElementById("btn-add-month").addEventListener("click", async () => {
       const months = globalData?.assets?.months || ["115/11"];
@@ -923,6 +1086,7 @@
       await saveOverviewCloud();
       populateMonthsDropdown();
       selectMonth.value = String(globalData.assets.months.indexOf(mName));
+      updateMonthDisplay();
       renderAll();
       window.showToast("已新增月份 " + mName);
     });
@@ -930,8 +1094,6 @@
     function renderAll() {
       const mIdx = parseInt(selectMonth.value || "0", 10);
       const isShared = activeBookId !== "personal";
-      const bookObj = sharedBooks.find(b => b.id === activeBookId);
-      document.getElementById("ledger-book-subtitle").textContent = "目前帳本：" + (isShared ? ("共同：" + (bookObj?.title || "")) : "個人帳本");
 
       const bar = document.getElementById("shared-balance-bar");
       if (isShared) {
@@ -987,8 +1149,6 @@
       if (window.lucide) lucide.createIcons();
       notifyRender();
     }
-
-    document.getElementById("filter-tx-type").addEventListener("change", () => renderAll());
 
     document.getElementById("btn-open-manage").addEventListener("click", () => {
       renderManageModal();
@@ -1195,7 +1355,7 @@
       list.forEach((stk, idx) => {
         totVal += (Number(stk.price) || 0) * (Number(stk.shares) || 0);
         totCost += Number(stk.cost) || 0;
-        box.innerHTML += `<div class="p-2.5 rounded-xl bg-slate-800/40 border space-y-1.5"><div class="flex justify-between font-bold"><span>${window.esc(stk.name || stk.ticker)} (${window.esc(stk.ticker)}) · ${window.esc(stk.account)}</span><button data-sidx="${idx}" class="del-stk text-rose-400">刪除</button></div><div class="grid grid-cols-3 gap-1.5"><div><span class="text-[10px] text-slate-400">現價</span><input type="number" inputmode="decimal" step="any" data-sidx="${idx}" data-f="price" value="${stk.price || 0}" class="stk-inp w-full p-1 text-right"></div><div><span class="text-[10px] text-slate-400">股數</span><input type="number" inputmode="decimal" step="any" data-sidx="${idx}" data-f="shares" value="${stk.shares || 0}" class="stk-inp w-full p-1 text-right"></div><div><span class="text-[10px] text-slate-400">成本</span><input type="number" inputmode="decimal" step="any" data-sidx="${idx}" data-f="cost" value="${stk.cost || 0}" class="stk-inp w-full p-1 text-right"></div></div></div>`;
+        box.innerHTML += `<div class="p-2.5 rounded-xl bg-slate-800/40 border space-y-1.5"><div class="flex justify-between font-bold"><span>${window.esc(stk.name || stk.ticker)} (${window.esc(stk.ticker)}) · ${window.esc(stk.account)}</span><button data-sidx="${idx}" class="del-stk text-rose-400">刪除</button></div><div class="grid grid-cols-3 gap-1.5"><div><span class="text-xs text-slate-400">現價</span><input type="number" inputmode="decimal" step="any" data-sidx="${idx}" data-f="price" value="${stk.price || 0}" class="stk-inp w-full p-1 text-right"></div><div><span class="text-xs text-slate-400">股數</span><input type="number" inputmode="decimal" step="any" data-sidx="${idx}" data-f="shares" value="${stk.shares || 0}" class="stk-inp w-full p-1 text-right"></div><div><span class="text-xs text-slate-400">成本</span><input type="number" inputmode="decimal" step="any" data-sidx="${idx}" data-f="cost" value="${stk.cost || 0}" class="stk-inp w-full p-1 text-right"></div></div></div>`;
       });
       document.getElementById("calc-stock-summary").textContent = `合計現值：$${Math.round(totVal).toLocaleString()} · 合計成本：$${Math.round(totCost).toLocaleString()}`;
       box.querySelectorAll(".stk-inp").forEach(inp => inp.addEventListener("input", () => { list[parseInt(inp.dataset.sidx, 10)][inp.dataset.f] = parseFloat(inp.value) || 0; renderStockList(monthStr); }));
@@ -1249,23 +1409,24 @@
     (function () {
       var btn = document.getElementById("btn-theme"); if (!btn) return;
       var KEY = "themeMode", order = ["auto", "light", "dark"],
-          labels = { auto: "跟隨系統", light: "日間模式", dark: "夜間模式" };
+          labels = { auto: "外觀：跟隨系統", light: "外觀：日間模式", dark: "外觀：夜間模式" };
       function mode() { try { return localStorage.getItem(KEY) || "auto"; } catch (e) { return "auto"; } }
       function render() {
-        var span = btn.querySelector("span");
-        if (span) span.textContent = labels[mode()];
+        var spans = btn.querySelectorAll("span");
+        var targetSpan = spans[spans.length - 1];
+        if (targetSpan) targetSpan.textContent = labels[mode()];
         if (window.lucide) lucide.createIcons();
       }
       btn.addEventListener("click", function () {
         var m = order[(order.indexOf(mode()) + 1) % 3];
         try { localStorage.setItem(KEY, m); } catch (e) {}
-        window.__applyTheme(); render(); window.showToast("外觀：" + labels[m]);
+        window.__applyTheme(); render(); window.showToast(labels[m]);
       });
       render();
     })();
   </script>
 
-  <script type="module" src="./stage3-addons.js?v=2"></script>
-  <script type="module" src="./quick-entry.js?v=2"></script>
+  <script type="module" src="./stage3-addons.js?v=3"></script>
+  <script type="module" src="./quick-entry.js?v=3"></script>
 </body>
 </html>
