@@ -115,6 +115,7 @@
       font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang TC","Noto Sans TC","Microsoft JhengHei","Helvetica Neue",sans-serif;
       font-feature-settings:"tnum" 1; letter-spacing:-0.01em;
       -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
+      -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
       transition:background-color .25s;
     }
     body::before {
@@ -171,6 +172,9 @@
     body [class*=" bg-slate-"], body [class^="bg-slate-"] { background-color:var(--slate-bg); }
     body [class*="border-slate-"] { border-color:var(--line); }
 
+    body input, body select, body textarea, [contenteditable="true"], .selectable-text {
+      -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
+    }
     body input, body select, body textarea {
       font-size: 16px;
       border-radius:12px; color:var(--ink); background-color:var(--input-bg); border:1px solid var(--input-border);
@@ -1426,7 +1430,7 @@
     })();
   </script>
 
-  <script type="module" src="./stage3-addons.js?v=3"></script>
-  <script type="module" src="./quick-entry.js?v=3"></script>
+  <script type="module" src="./stage3-addons.js?v=4"></script>
+  <script type="module" src="./quick-entry.js?v=4"></script>
 </body>
 </html>

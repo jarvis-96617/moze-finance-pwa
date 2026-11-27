@@ -656,8 +656,8 @@ function openFanMenu() {
   if (!fanLayer || !backdrop) return;
 
   const items = getTopFanItems();
-  const radius = 128;
-  const startDeg = -158, endDeg = -22;
+  const radius = 108;
+  const startDeg = -150, endDeg = -30;
   fanLayer.innerHTML = "";
 
   items.forEach((it, i) => {
